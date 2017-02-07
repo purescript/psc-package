@@ -26,7 +26,7 @@ import           Data.Version (showVersion)
 import qualified Filesystem.Path.CurrentOS as Path
 import           GHC.Generics (Generic)
 import qualified Options.Applicative as Opts
-import qualified Paths_purescript as Paths
+import qualified Paths_psc_package as Paths
 import qualified System.IO as IO
 import           Turtle hiding (echo, fold, s, x)
 import qualified Turtle
