@@ -14,7 +14,6 @@ before_install:
   - export PATH=$HOME/.local/bin:$PATH
   - curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
 install:
-  - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
   - stack --no-terminal -j1 --install-ghc build --only-dependencies
 script:
   - stack --no-terminal -j1 build
