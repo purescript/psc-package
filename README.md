@@ -1,5 +1,7 @@
 # `psc-package`
 
+[![Build Status](https://travis-ci.org/purescript/psc-package.svg?branch=master)](https://travis-ci.org/purescript/psc-package)
+
 `psc-package` is an executable which helps manage PureScript dependencies via Git. It can be used directly, but it is also designed to be used by external tools.
 
 ## Concepts
