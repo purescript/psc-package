@@ -4,6 +4,13 @@
 
 `psc-package` is an executable which helps manage PureScript dependencies via Git. It can be used directly, but it is also designed to be used by external tools.
 
+## Design Goals
+
+- `psc-package` should enable simple package management without the need to run Node (compare with Bower).
+- `psc-package` should enable reproducible builds, at least as far as reproducing PureScript dependencies.
+- `psc-package` should have a good out-of-the-box user experience (compare with Stack in Haskell), while still supporting custom package sets for advanced use cases.
+- `psc-package` should only depend on tools which are available on all systems (for example, the Git client)
+
 ## Concepts
 
 ### Package Sets
