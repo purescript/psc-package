@@ -28,6 +28,7 @@ import           GHC.Generics (Generic)
 import qualified Options.Applicative as Opts
 import qualified Paths_psc_package as Paths
 import qualified System.IO as IO
+import qualified System.Process as Process
 import           Turtle hiding (echo, fold, s, x)
 import qualified Turtle
 
@@ -249,21 +250,29 @@ getSourcePaths PackageConfig{..} db pkgNames = do
               ]
   return paths
 
-listSourcePaths :: IO ()
-listSourcePaths = do
-  pkg@PackageConfig{ depends } <- readPackageFile
-  db <- readPackageSet pkg
-  paths <- getSourcePaths pkg db depends
-  traverse_ (echoT . pathToTextUnsafe) paths
-
-exec :: Text -> IO ()
-exec exeName = do
+getPaths :: IO [Turtle.FilePath]
+getPaths = do
   pkg@PackageConfig{..} <- readPackageFile
   db <- readPackageSet pkg
-  paths <- getSourcePaths pkg db depends
-  procs exeName
-        (map pathToTextUnsafe ("src" </> "**" </> "*.purs" : paths))
-        empty
+  getSourcePaths pkg db depends
+
+listSourcePaths :: IO ()
+listSourcePaths = do
+  paths <- getPaths
+  traverse_ (echoT . pathToTextUnsafe) paths
+
+exec :: String -> Bool -> IO ()
+exec execName onlyDeps = do
+  paths <- getPaths
+  exit
+    =<< Process.waitForProcess
+    =<< Process.runProcess execName
+      (Path.encodeString <$> [ "src" </> "**" </> "*.purs" | not onlyDeps ] <> paths)
+      Nothing -- no special path to the working dir
+      Nothing -- no env vars
+      Nothing -- use existing stdin
+      Nothing -- use existing stdout
+      Nothing -- use existing stderr
 
 checkForUpdates :: Bool -> Bool -> IO ()
 checkForUpdates applyMinorUpdates applyMajorUpdates = do
@@ -358,7 +367,7 @@ verifyPackageSet = do
     let dirFor = fromMaybe (error "verifyPackageSet: no directory") . (`Map.lookup` paths)
     echoT ("Verifying package " <> name)
     let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs")) . dirFor) (name : dependencies)
-    procs "psc" srcGlobs empty
+    exit =<< proc "psc" srcGlobs empty
 
 main :: IO ()
 main = do
@@ -385,14 +394,17 @@ main = do
             (Opts.info (pure update)
             (Opts.progDesc "Update dependencies"))
         , Opts.command "uninstall"
-            (Opts.info (uninstall <$> pkg)
+            (Opts.info (uninstall <$> pkg Opts.<**> Opts.helper)
             (Opts.progDesc "Uninstall the named package"))
         , Opts.command "install"
-            (Opts.info (install <$> pkg)
+            (Opts.info (install <$> pkg Opts.<**> Opts.helper)
             (Opts.progDesc "Install the named package"))
         , Opts.command "build"
-            (Opts.info (pure (exec "psc"))
+            (Opts.info (exec "psc" <$> onlyDeps "Compile only the package's dependencies" Opts.<**> Opts.helper)
             (Opts.progDesc "Build the current package and dependencies"))
+        , Opts.command "repl"
+            (Opts.info (exec "psci" <$> onlyDeps "Load only the package's dependencies" Opts.<**> Opts.helper)
+            (Opts.progDesc "Open an interactive environment for PureScript"))
         , Opts.command "dependencies"
             (Opts.info (pure listDependencies)
             (Opts.progDesc "List all (transitive) dependencies for the current package"))
@@ -403,7 +415,7 @@ main = do
             (Opts.info (pure listPackages)
             (Opts.progDesc "List all packages available in the package set"))
         , Opts.command "updates"
-            (Opts.info (checkForUpdates <$> apply <*> applyMajor)
+            (Opts.info (checkForUpdates <$> apply <*> applyMajor Opts.<**> Opts.helper)
             (Opts.progDesc "Check all packages in the package set for new releases"))
         , Opts.command "verify-set"
             (Opts.info (pure verifyPackageSet)
@@ -421,3 +433,8 @@ main = do
         applyMajor = Opts.switch $
              Opts.long "apply-breaking"
           <> Opts.help "Apply all major package updates"
+
+        onlyDeps help = Opts.switch $
+             Opts.long "only-dependencies"
+          <> Opts.short 'd'
+          <> Opts.help help
