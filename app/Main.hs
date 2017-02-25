@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -278,13 +279,12 @@ listSourcePaths = do
   paths <- getPaths
   traverse_ (echoT . pathToTextUnsafe) paths
 
-exec :: [String] -> Bool -> IO ()
+exec :: [String] -> Bool -> IO ExitCode
 exec execNames onlyDeps = do
   paths <- getPaths
   let cmdParts = tail execNames
       srcParts = [ "src" </> "**" </> "*.purs" | not onlyDeps ]
-  exit
-    =<< Process.waitForProcess
+  Process.waitForProcess
     =<< Process.runProcess
           (head execNames)
           (cmdParts <> map Path.encodeString (srcParts <> paths))
@@ -293,6 +293,24 @@ exec execNames onlyDeps = do
           Nothing -- use existing stdin
           Nothing -- use existing stdout
           Nothing -- use existing stderr
+
+runProgram :: IO ()
+runProgram = do
+  exec ["purs", "compile"] False >>= \case
+    ExitSuccess -> do
+      exit
+        =<< Process.waitForProcess
+        =<< Process.runProcess "node"
+          ["-e", "require('./output/Main').main();"]
+          Nothing -- no special path to the working dir
+          Nothing -- no env vars
+          Nothing -- use existing stdin
+          Nothing -- use existing stdout
+          Nothing -- use existing stderr
+    exitFailure ->
+      exit exitFailure
+
+
 
 checkForUpdates :: Bool -> Bool -> IO ()
 checkForUpdates applyMinorUpdates applyMajorUpdates = do
@@ -420,11 +438,24 @@ main = do
             (Opts.info (install <$> pkg Opts.<**> Opts.helper)
             (Opts.progDesc "Install the named package"))
         , Opts.command "build"
-            (Opts.info (exec ["purs", "compile"] <$> onlyDeps "Compile only the package's dependencies" Opts.<**> Opts.helper)
-            (Opts.progDesc "Build the current package and dependencies"))
+            (Opts.info
+              ((exit <=< exec ["purs", "compile"])
+               <$> onlyDeps "Compile only the package's dependencies"
+               Opts.<**> Opts.helper)
+              (Opts.progDesc "Build the current package and dependencies")
+            )
         , Opts.command "repl"
-            (Opts.info (exec ["purs", "repl"] <$> onlyDeps "Load only the package's dependencies" Opts.<**> Opts.helper)
-            (Opts.progDesc "Open an interactive environment for PureScript"))
+            (Opts.info
+              ((exit <=< exec ["purs", "repl"])
+               <$> onlyDeps "Load only the package's dependencies"
+               Opts.<**> Opts.helper)
+              (Opts.progDesc "Open an interactive environment for PureScript")
+            )
+        , Opts.command "run"
+            (Opts.info
+              (pure runProgram Opts.<**> Opts.helper)
+              (Opts.progDesc "Build and run the current project")
+            )
         , Opts.command "dependencies"
             (Opts.info (pure listDependencies)
             (Opts.progDesc "List all (transitive) dependencies for the current package"))
