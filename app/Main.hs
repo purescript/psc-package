@@ -11,9 +11,10 @@ import qualified Control.Foldl as Foldl
 import qualified Data.Aeson as Aeson
 import           Data.Aeson.Encode.Pretty
 import           Data.Foldable (fold, for_, traverse_)
-import           Data.List (nub)
+import           Data.List (maximumBy, nub)
 import qualified Data.Map as Map
 import           Data.Maybe (fromMaybe, mapMaybe)
+import           Data.Ord (comparing)
 import qualified Data.Set as Set
 import           Data.Text (pack)
 import qualified Data.Text as T
@@ -22,13 +23,14 @@ import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Builder as TB
 import qualified Data.Text.Read as TR
 import           Data.Traversable (for)
-import           Data.Version (showVersion)
+import           Data.Version (Version(..), parseVersion, showVersion)
 import qualified Filesystem.Path.CurrentOS as Path
 import           GHC.Generics (Generic)
 import qualified Options.Applicative as Opts
 import qualified Paths_psc_package as Paths
 import qualified System.IO as IO
 import qualified System.Process as Process
+import qualified Text.ParserCombinators.ReadP as Read
 import           Turtle hiding (echo, fold, s, x)
 import qualified Turtle
 
@@ -48,11 +50,11 @@ data PackageConfig = PackageConfig
 pathToTextUnsafe :: Turtle.FilePath -> Text
 pathToTextUnsafe = either (error "Path.toText failed") id . Path.toText
 
-defaultPackage :: Text -> PackageConfig
-defaultPackage pkgName =
+defaultPackage :: Version -> Text -> PackageConfig
+defaultPackage pursVersion pkgName =
   PackageConfig { name    = pkgName
                 , depends = [ "prelude" ]
-                , set     = "psc-" <> pack (showVersion Paths.version)
+                , set     = "psc-" <> pack (showVersion pursVersion)
                 , source  = "https://github.com/purescript/package-sets.git"
                 }
 
@@ -188,6 +190,18 @@ updateImpl config@PackageConfig{ depends } = do
   echoT ("Updating " <> pack (show (length trans)) <> " packages...")
   for_ trans $ \(pkgName, pkg) -> installOrUpdate (set config) pkgName pkg
 
+getPureScriptVersion :: IO Version
+getPureScriptVersion = do
+  let pursProc = inproc "purs" [ "--version" ] empty
+  outputLines <- Turtle.fold (fmap lineToText pursProc) Foldl.list
+  case outputLines of
+    [onlyLine]
+      | results@(_ : _) <- Read.readP_to_S parseVersion (T.unpack onlyLine) ->
+           pure (fst (maximumBy (comparing (length . versionBranch . fst)) results))
+      | otherwise ->
+           echoT "Unable to parse output of purs --version" >> exit (ExitFailure 1)
+    _ -> echoT "Unexpected output from purs --version" >> exit (ExitFailure 1)
+
 initialize :: IO ()
 initialize = do
   exists <- testfile "psc-package.json"
@@ -196,7 +210,10 @@ initialize = do
     exit (ExitFailure 1)
   echoT "Initializing new project in current directory"
   pkgName <- pathToTextUnsafe . Path.filename <$> pwd
-  let pkg = defaultPackage pkgName
+  pursVersion <- getPureScriptVersion
+  echoT ("Using the default package set for PureScript compiler version " <>
+    fromString (showVersion pursVersion))
+  let pkg = defaultPackage pursVersion pkgName
   writePackageFile pkg
   updateImpl pkg
 
@@ -286,7 +303,7 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
       echoT ("Checking package " <> name)
       tagLines <- Turtle.fold (listRemoteTags repo) Foldl.list
       let tags = mapMaybe parseTag tagLines
-      newVersion <- case parseVersion version of
+      newVersion <- case parsePackageVersion version of
         Just parts ->
           let applyMinor =
                 case filter (isMinorReleaseFrom parts) tags of
@@ -323,14 +340,14 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
         [_sha, ref] ->
           case T.stripPrefix "refs/tags/" ref of
             Just tag ->
-              case parseVersion tag of
+              case parsePackageVersion tag of
                 Just parts -> pure parts
                 _ -> Nothing
             _ -> Nothing
         _ -> Nothing
 
-    parseVersion :: Text -> Maybe [Int]
-    parseVersion ref =
+    parsePackageVersion :: Text -> Maybe [Int]
+    parsePackageVersion ref =
       case T.stripPrefix "v" ref of
         Just tag ->
           traverse parseDecimal (T.splitOn "." tag)
