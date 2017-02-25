@@ -261,18 +261,21 @@ listSourcePaths = do
   paths <- getPaths
   traverse_ (echoT . pathToTextUnsafe) paths
 
-exec :: String -> Bool -> IO ()
-exec execName onlyDeps = do
+exec :: [String] -> Bool -> IO ()
+exec execNames onlyDeps = do
   paths <- getPaths
+  let cmdParts = tail execNames
+      srcParts = [ "src" </> "**" </> "*.purs" | not onlyDeps ]
   exit
     =<< Process.waitForProcess
-    =<< Process.runProcess execName
-      (Path.encodeString <$> [ "src" </> "**" </> "*.purs" | not onlyDeps ] <> paths)
-      Nothing -- no special path to the working dir
-      Nothing -- no env vars
-      Nothing -- use existing stdin
-      Nothing -- use existing stdout
-      Nothing -- use existing stderr
+    =<< Process.runProcess
+          (head execNames)
+          (cmdParts <> map Path.encodeString (srcParts <> paths))
+          Nothing -- no special path to the working dir
+          Nothing -- no env vars
+          Nothing -- use existing stdin
+          Nothing -- use existing stdout
+          Nothing -- use existing stderr
 
 checkForUpdates :: Bool -> Bool -> IO ()
 checkForUpdates applyMinorUpdates applyMajorUpdates = do
@@ -400,10 +403,10 @@ main = do
             (Opts.info (install <$> pkg Opts.<**> Opts.helper)
             (Opts.progDesc "Install the named package"))
         , Opts.command "build"
-            (Opts.info (exec "psc" <$> onlyDeps "Compile only the package's dependencies" Opts.<**> Opts.helper)
+            (Opts.info (exec ["purs", "compile"] <$> onlyDeps "Compile only the package's dependencies" Opts.<**> Opts.helper)
             (Opts.progDesc "Build the current package and dependencies"))
         , Opts.command "repl"
-            (Opts.info (exec "psci" <$> onlyDeps "Load only the package's dependencies" Opts.<**> Opts.helper)
+            (Opts.info (exec ["purs", "repl"] <$> onlyDeps "Load only the package's dependencies" Opts.<**> Opts.helper)
             (Opts.progDesc "Open an interactive environment for PureScript"))
         , Opts.command "dependencies"
             (Opts.info (pure listDependencies)
