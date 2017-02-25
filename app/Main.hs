@@ -60,7 +60,7 @@ readPackageFile :: IO PackageConfig
 readPackageFile = do
   exists <- testfile packageFile
   unless exists $ do
-    echoT "psc-package.json does not exist"
+    echoT "psc-package.json does not exist. Maybe you need to run psc-package init?"
     exit (ExitFailure 1)
   mpkg <- Aeson.decodeStrict . encodeUtf8 <$> readTextFile packageFile
   case mpkg of
