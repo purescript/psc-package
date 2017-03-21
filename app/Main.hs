@@ -384,10 +384,10 @@ verifyPackageSet = do
   paths <- Map.fromList <$> traverse installOrUpdate' (Map.toList db)
 
   for_ (Map.toList db) $ \(name, PackageInfo{..}) -> do
-    let dirFor = fromMaybe (error "verifyPackageSet: no directory") . (`Map.lookup` paths)
+    let dirFor pkgName = fromMaybe (error ("verifyPackageSet: no directory for " <> show pkgName)) (Map.lookup pkgName paths)
     echoT ("Verifying package " <> name)
     let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs")) . dirFor) (name : dependencies)
-    exit =<< proc "psc" srcGlobs empty
+    procs "purs" ("compile" : srcGlobs) empty
 
 main :: IO ()
 main = do
