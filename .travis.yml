@@ -1,21 +1,62 @@
-sudo: false
 language: c
-cache:
-  directories:
-    - $HOME/.ghc
-    - $HOME/.cabal
-    - $HOME/.stack
+dist: trusty # because of perf issues
+sudo: required
+matrix:
+  include:
+    # We use trusty boxes because they seem to be a bit faster.
+    - os: linux
+      dist: trusty
+      sudo: required
+      env: BUILD_TYPE=normal DEPLOY=true
+
+    - os: osx
+      env: BUILD_TYPE=normal DEPLOY=true
 addons:
   apt:
     packages:
-      - libgmp-dev
-before_install:
-  - mkdir -p ~/.local/bin
-  - export PATH=$HOME/.local/bin:$PATH
-  - curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
+    - libgmp-dev
+cache:
+  directories:
+  - $HOME/.local/bin
+  - $HOME/.stack
 install:
-  - stack --no-terminal -j1 --install-ghc build --only-dependencies
+- | # Install stack.
+  if test ! -f "$HOME/.local/bin/stack"
+  then
+    URL="https://www.stackage.org/stack/$TRAVIS_OS_NAME-x86_64"
+    curl --location "$URL" > stack.tar.gz
+    gunzip stack.tar.gz
+    tar -x -f stack.tar --strip-components 1
+    mkdir -p "$HOME/.local/bin"
+    mv stack "$HOME/.local/bin/"
+  fi
+- npm install -g bower # for psc-docs / psc-publish tests
+- export OS_NAME=$(./travis/convert-os-name.sh)
+# Install 'timeout'
+- |
+  if [ "$TRAVIS_OS_NAME" == "osx" ]
+  then
+    if ! which gtimeout >/dev/null
+    then
+      brew update
+      brew install coreutils
+    fi
+    export TIMEOUT=gtimeout
+  else
+    export TIMEOUT=timeout
+  fi
 script:
-  - stack --no-terminal -j1 build
-notifications:
-  email: true
+- travis/build.sh
+before_deploy:
+- ./bundle/build.sh $OS_NAME
+deploy:
+  provider: releases
+  api_key: $RELEASE_KEY
+  file:
+    - bundle/$OS_NAME.tar.gz
+    - bundle/$OS_NAME.sha
+  skip_cleanup: true
+  on:
+    all_branches: true
+    tags: true
+    condition: "$DEPLOY = true"
