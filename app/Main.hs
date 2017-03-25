@@ -11,6 +11,7 @@ import qualified Control.Foldl as Foldl
 import qualified Data.Aeson as Aeson
 import           Data.Aeson.Encode.Pretty
 import           Data.Foldable (fold, for_, traverse_)
+import qualified Data.Graph as G
 import           Data.List (maximumBy, nub)
 import qualified Data.Map as Map
 import           Data.Maybe (fromMaybe, mapMaybe)
@@ -246,14 +247,24 @@ listDependencies = do
   trans <- getTransitiveDeps db depends
   traverse_ (echoT . fst) trans
 
-listPackages :: IO ()
-listPackages = do
+listPackages :: Bool -> IO ()
+listPackages sorted = do
   pkg <- readPackageFile
   db <- readPackageSet pkg
-  traverse_ echoT (fmt <$> Map.assocs db)
+  if sorted
+    then traverse_ echoT (fmt <$> inOrder (Map.assocs db))
+    else traverse_ echoT (fmt <$> Map.assocs db)
   where
   fmt :: (Text, PackageInfo) -> Text
-  fmt (name, PackageInfo{ version }) = name <> " (" <> version <> ")"
+  fmt (name, PackageInfo{ version, repo }) = name <> " (" <> version <> ", " <> repo <> ")"
+
+  inOrder xs = fromNode . fromVertex <$> vs where
+    (gr, fromVertex) =
+      G.graphFromEdges' [ (pkg, name, dependencies pkg)
+                        | (name, pkg) <- xs
+                        ]
+    vs = G.topSort (G.transposeG gr)
+    fromNode (pkg, name, _) = (name, pkg)
 
 getSourcePaths :: PackageConfig -> PackageSet -> [Text] -> IO [Turtle.FilePath]
 getSourcePaths PackageConfig{..} db pkgNames = do
@@ -432,7 +443,7 @@ main = do
             (Opts.info (pure listSourcePaths)
             (Opts.progDesc "List all (active) source paths for dependencies"))
         , Opts.command "available"
-            (Opts.info (pure listPackages)
+            (Opts.info (listPackages <$> sorted)
             (Opts.progDesc "List all packages available in the package set"))
         , Opts.command "updates"
             (Opts.info (checkForUpdates <$> apply <*> applyMajor Opts.<**> Opts.helper)
@@ -458,3 +469,8 @@ main = do
              Opts.long "only-dependencies"
           <> Opts.short 'd'
           <> Opts.help help
+
+        sorted = Opts.switch $
+             Opts.long "sort"
+          <> Opts.short 's'
+          <> Opts.help "Sort packages in dependency order"
