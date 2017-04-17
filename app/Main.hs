@@ -29,6 +29,7 @@ import qualified Filesystem.Path.CurrentOS as Path
 import           GHC.Generics (Generic)
 import qualified Options.Applicative as Opts
 import qualified Paths_psc_package as Paths
+import           System.Environment (getArgs)
 import qualified System.IO as IO
 import qualified System.Process as Process
 import qualified Text.ParserCombinators.ReadP as Read
@@ -404,13 +405,19 @@ main :: IO ()
 main = do
     IO.hSetEncoding IO.stdout IO.utf8
     IO.hSetEncoding IO.stderr IO.utf8
-    cmd <- Opts.execParser opts
+    cmd <- Opts.handleParseResult . execParserPure opts =<< getArgs
     cmd
   where
     opts        = Opts.info (versionInfo <*> Opts.helper <*> commands) infoModList
     infoModList = Opts.fullDesc <> headerInfo <> footerInfo
     headerInfo  = Opts.progDesc "Manage package dependencies"
     footerInfo  = Opts.footer $ "psc-package " ++ showVersion Paths.version
+
+    -- | Displays full command help when invoked with no arguments.
+    execParserPure :: Opts.ParserInfo a -> [String] -> Opts.ParserResult a
+    execParserPure pinfo [] = Opts.Failure $
+      Opts.parserFailure Opts.defaultPrefs pinfo Opts.ShowHelpText mempty
+    execParserPure pinfo args = Opts.execParserPure Opts.defaultPrefs pinfo args
 
     versionInfo :: Parser (a -> a)
     versionInfo = Opts.abortOption (Opts.InfoMsg (showVersion Paths.version)) $
