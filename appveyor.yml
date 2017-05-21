@@ -7,7 +7,7 @@ environment:
 
 before_build:
 - set PATH=%PATH%;C:\tools
-- pushd c:\tools & curl -ostack.zip -L --insecure http://www.stackage.org/stack/windows-x86_64 & 7z x stack.zip stack.exe & popd
+- pushd c:\tools & curl -ostack.zip -L https://www.stackage.org/stack/windows-x86_64 & 7z x stack.zip stack.exe & popd
 - stack --no-terminal --verbosity=error setup 1>stack-setup.log 2>&1 || type stack-setup.log
 
 build_script:
