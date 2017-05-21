@@ -27,6 +27,7 @@ executable psc-package
                    turtle ==1.3.*
     main-is: Main.hs
     other-modules: Paths_psc_package
+                   Types
     buildable: True
     hs-source-dirs: app
     ghc-options: -Wall -O2
