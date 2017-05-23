@@ -1,0 +1,38 @@
+build: off
+platform: x64
+
+environment:
+  RELEASE_USER: purescript
+  RELEASE_REPO: psc-package
+
+before_build:
+- set PATH=%PATH%;C:\tools
+- pushd c:\tools & curl -ostack.zip -L https://www.stackage.org/stack/windows-x86_64 & 7z x stack.zip stack.exe & popd
+- stack --no-terminal --verbosity=error setup 1>stack-setup.log 2>&1 || type stack-setup.log
+
+build_script:
+- if not defined APPVEYOR_REPO_TAG_NAME (set stack_extra_flags="--fast")
+- stack --no-terminal --jobs=1 build --pedantic %stack_extra_flags% 
+
+test_script:
+- stack test
+
+on_success:
+- ps: |
+    function UploadFile
+    {
+      github-release upload --user $env:RELEASE_USER --repo $env:RELEASE_REPO --tag $env:APPVEYOR_REPO_TAG_NAME --file $args[0] --name $args[0]
+    }
+    if ($env:APPVEYOR_REPO_TAG_NAME)
+    {
+      bash ./bundle/build.sh win64
+      (New-Object Net.WebClient).DownloadFile('https://github.com/aktau/github-release/releases/download/v0.7.2/windows-amd64-github-release.zip', 'c:\tools\github-release.zip')
+      pushd c:\tools
+      7z x github-release.zip bin/windows/amd64/github-release.exe
+      Copy-Item bin/windows/amd64/github-release.exe github-release.exe
+      popd
+      pushd bundle
+      UploadFile win64.tar.gz
+      UploadFile win64.sha
+      popd
+    }
