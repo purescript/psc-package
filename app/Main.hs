@@ -35,6 +35,7 @@ import qualified System.Process as Process
 import qualified Text.ParserCombinators.ReadP as Read
 import           Turtle hiding (echo, fold, s, x)
 import qualified Turtle
+import           Types (PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
 
 echoT :: Text -> IO ()
 echoT = Turtle.printf (Turtle.s % "\n")
@@ -43,8 +44,8 @@ packageFile :: Path.FilePath
 packageFile = "psc-package.json"
 
 data PackageConfig = PackageConfig
-  { name    :: Text
-  , depends :: [Text]
+  { name    :: PackageName
+  , depends :: [PackageName]
   , set     :: Text
   , source  :: Text
   } deriving (Show, Generic, Aeson.FromJSON, Aeson.ToJSON)
@@ -52,10 +53,10 @@ data PackageConfig = PackageConfig
 pathToTextUnsafe :: Turtle.FilePath -> Text
 pathToTextUnsafe = either (error "Path.toText failed") id . Path.toText
 
-defaultPackage :: Version -> Text -> PackageConfig
+defaultPackage :: Version -> PackageName -> PackageConfig
 defaultPackage pursVersion pkgName =
   PackageConfig { name    = pkgName
-                , depends = [ "prelude" ]
+                , depends = [ preludePackageName ]
                 , set     = "psc-" <> pack (showVersion pursVersion)
                 , source  = "https://github.com/purescript/package-sets.git"
                 }
@@ -104,10 +105,10 @@ writePackageFile =
 data PackageInfo = PackageInfo
   { repo         :: Text
   , version      :: Text
-  , dependencies :: [Text]
+  , dependencies :: [PackageName]
   } deriving (Show, Eq, Generic, Aeson.FromJSON, Aeson.ToJSON)
 
-type PackageSet = Map.Map Text PackageInfo
+type PackageSet = Map.Map PackageName PackageInfo
 
 cloneShallow
   :: Text
@@ -165,20 +166,20 @@ writePackageSet PackageConfig{ set } =
   let dbFile = ".psc-package" </> fromText set </> ".set" </> "packages.json"
   in writeTextFile dbFile . packageSetToJSON
 
-installOrUpdate :: Text -> Text -> PackageInfo -> IO Turtle.FilePath
+installOrUpdate :: Text -> PackageName -> PackageInfo -> IO Turtle.FilePath
 installOrUpdate set pkgName PackageInfo{ repo, version } = do
-  echoT ("Updating " <> pkgName)
-  let pkgDir = ".psc-package" </> fromText set </> fromText pkgName </> fromText version
+  echoT ("Updating " <> runPackageName pkgName)
+  let pkgDir = ".psc-package" </> fromText set </> fromText (runPackageName pkgName) </> fromText version
   exists <- testdir pkgDir
   unless exists . void $ cloneShallow repo version pkgDir
   pure pkgDir
 
-getTransitiveDeps :: PackageSet -> [Text] -> IO [(Text, PackageInfo)]
+getTransitiveDeps :: PackageSet -> [PackageName] -> IO [(PackageName, PackageInfo)]
 getTransitiveDeps db depends = do
   pkgs <- for depends $ \pkg ->
     case Map.lookup pkg db of
       Nothing -> do
-        echoT ("Package " <> pkg <> " does not exist in package set")
+        echoT ("Package " <> runPackageName pkg <> " does not exist in package set")
         exit (ExitFailure 1)
       Just PackageInfo{ dependencies } -> return (pkg : dependencies)
   let unique = Set.toList (foldMap Set.fromList pkgs)
@@ -211,13 +212,17 @@ initialize = do
     echoT "psc-package.json already exists"
     exit (ExitFailure 1)
   echoT "Initializing new project in current directory"
-  pkgName <- pathToTextUnsafe . Path.filename <$> pwd
+  pkgName <- packageNameFromPWD . pathToTextUnsafe . Path.filename <$> pwd
   pursVersion <- getPureScriptVersion
   echoT ("Using the default package set for PureScript compiler version " <>
     fromString (showVersion pursVersion))
   let pkg = defaultPackage pursVersion pkgName
   writePackageFile pkg
   updateImpl pkg
+
+  where
+  packageNameFromPWD =
+    either (const untitledPackageName) id . mkPackageName
 
 update :: IO ()
 update = do
@@ -226,27 +231,38 @@ update = do
   echoT "Update complete"
 
 install :: String -> IO ()
-install pkgName = do
+install pkgName' = do
   pkg <- readPackageFile
-  let pkg' = pkg { depends = nub (pack pkgName : depends pkg) }
+  pkgName <- packageNameFromString pkgName'
+  let pkg' = pkg { depends = nub (pkgName : depends pkg) }
   updateImpl pkg'
   writePackageFile pkg'
   echoT "psc-package.json file was updated"
 
 uninstall :: String -> IO ()
-uninstall pkgName = do
+uninstall pkgName' = do
   pkg <- readPackageFile
-  let pkg' = pkg { depends = filter (/= pack pkgName) $ depends pkg }
+  pkgName <- packageNameFromString pkgName'
+  let pkg' = pkg { depends = filter (/= pkgName) $ depends pkg }
   updateImpl pkg'
   writePackageFile pkg'
   echoT "psc-package.json file was updated"
+
+packageNameFromString :: String -> IO PackageName
+packageNameFromString str =
+  case mkPackageName (pack str) of
+    Right pkgName ->
+      pure pkgName
+    Left _ -> do
+      echoT ("Invalid package name: " <> pack (show str))
+      exit (ExitFailure 1)
 
 listDependencies :: IO ()
 listDependencies = do
   pkg@PackageConfig{ depends } <- readPackageFile
   db <- readPackageSet pkg
   trans <- getTransitiveDeps db depends
-  traverse_ (echoT . fst) trans
+  traverse_ (echoT . runPackageName . fst) trans
 
 listPackages :: Bool -> IO ()
 listPackages sorted = do
@@ -256,8 +272,9 @@ listPackages sorted = do
     then traverse_ echoT (fmt <$> inOrder (Map.assocs db))
     else traverse_ echoT (fmt <$> Map.assocs db)
   where
-  fmt :: (Text, PackageInfo) -> Text
-  fmt (name, PackageInfo{ version, repo }) = name <> " (" <> version <> ", " <> repo <> ")"
+  fmt :: (PackageName, PackageInfo) -> Text
+  fmt (name, PackageInfo{ version, repo }) =
+    runPackageName name <> " (" <> version <> ", " <> repo <> ")"
 
   inOrder xs = fromNode . fromVertex <$> vs where
     (gr, fromVertex) =
@@ -267,12 +284,12 @@ listPackages sorted = do
     vs = G.topSort (G.transposeG gr)
     fromNode (pkg, name, _) = (name, pkg)
 
-getSourcePaths :: PackageConfig -> PackageSet -> [Text] -> IO [Turtle.FilePath]
+getSourcePaths :: PackageConfig -> PackageSet -> [PackageName] -> IO [Turtle.FilePath]
 getSourcePaths PackageConfig{..} db pkgNames = do
   trans <- getTransitiveDeps db pkgNames
   let paths = [ ".psc-package"
                 </> fromText set
-                </> fromText pkgName
+                </> fromText (runPackageName pkgName)
                 </> fromText version
                 </> "src" </> "**" </> "*.purs"
               | (pkgName, PackageInfo{ version }) <- trans
@@ -315,7 +332,7 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
     echoT "Warning: this could take some time!"
 
     newDb <- Map.fromList <$> (for (Map.toList db) $ \(name, p@PackageInfo{ repo, version }) -> do
-      echoT ("Checking package " <> name)
+      echoT ("Checking package " <> runPackageName name)
       tagLines <- Turtle.fold (listRemoteTags repo) Foldl.list
       let tags = mapMaybe parseTag tagLines
       newVersion <- case parsePackageVersion version of
@@ -397,7 +414,7 @@ verifyPackageSet = do
 
   for_ (Map.toList db) $ \(name, PackageInfo{..}) -> do
     let dirFor pkgName = fromMaybe (error ("verifyPackageSet: no directory for " <> show pkgName)) (Map.lookup pkgName paths)
-    echoT ("Verifying package " <> name)
+    echoT ("Verifying package " <> runPackageName name)
     let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs")) . dirFor) (name : dependencies)
     procs "purs" ("compile" : srcGlobs) empty
 
