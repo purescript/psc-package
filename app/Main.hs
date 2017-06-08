@@ -305,7 +305,8 @@ getPaths = do
 listSourcePaths :: IO ()
 listSourcePaths = do
   paths <- getPaths
-  traverse_ (echoT . pathToTextUnsafe) paths
+  traverse_ (echoT . quote . pathToTextUnsafe) paths
+  where quote s = '\'' `T.cons` (s `T.snoc` '\'')
 
 exec :: [String] -> Bool -> IO ()
 exec execNames onlyDeps = do
