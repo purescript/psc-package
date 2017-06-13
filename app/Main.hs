@@ -114,20 +114,34 @@ cloneShallow
   :: Text
   -- ^ repo
   -> Text
-  -- ^ branch/tag
+  -- ^ branch/tag/SHA
   -> Turtle.FilePath
   -- ^ target directory
-  -> IO ExitCode
-cloneShallow from ref into =
-  proc "git"
-       [ "clone"
-       , "-q"
-       , "-c", "advice.detachedHead=false"
-       , "--depth", "1"
-       , "-b", ref
-       , from
-       , pathToTextUnsafe into
-       ] empty .||. exit (ExitFailure 1)
+  -> IO ()
+cloneShallow from ref into = do
+  gitExists <- testdir (into </> ".git")
+  unless gitExists $ void $ do
+    proc "git"
+         [ "clone"
+         , "-q"
+         , "-c", "advice.detachedHead=false"
+         , "--depth", "1"
+         , from
+         , pathToTextUnsafe into
+         ] empty .||. exit (ExitFailure 1)
+  inGitRepo $ proc "git"
+                   [ "fetch"
+                   , "-q"
+                   , "--tags"
+                   ] empty .||. exit (ExitFailure 1)
+  inGitRepo $ proc "git"
+                   [ "reset"
+                   , "-q"
+                   , "--hard"
+                   , ref
+                   ] empty .||. exit (ExitFailure 1)
+  where
+  inGitRepo m = (view (pushd into >> m))
 
 listRemoteTags
   :: Text
@@ -144,8 +158,7 @@ listRemoteTags from = let gitProc = inproc "git"
 getPackageSet :: PackageConfig -> IO ()
 getPackageSet PackageConfig{ source, set } = do
   let pkgDir = ".psc-package" </> fromText set </> ".set"
-  exists <- testdir pkgDir
-  unless exists . void $ cloneShallow source set pkgDir
+  void $ cloneShallow source set pkgDir
 
 readPackageSet :: PackageConfig -> IO PackageSet
 readPackageSet PackageConfig{ set } = do
@@ -170,8 +183,7 @@ installOrUpdate :: Text -> PackageName -> PackageInfo -> IO Turtle.FilePath
 installOrUpdate set pkgName PackageInfo{ repo, version } = do
   echoT ("Updating " <> runPackageName pkgName)
   let pkgDir = ".psc-package" </> fromText set </> fromText (runPackageName pkgName) </> fromText version
-  exists <- testdir pkgDir
-  unless exists . void $ cloneShallow repo version pkgDir
+  void $ cloneShallow repo version pkgDir
   pure pkgDir
 
 getTransitiveDeps :: PackageSet -> [PackageName] -> IO [(PackageName, PackageInfo)]
