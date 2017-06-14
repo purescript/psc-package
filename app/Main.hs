@@ -141,7 +141,7 @@ cloneShallow from ref into = do
                    , ref
                    ] empty .||. exit (ExitFailure 1)
   where
-  inGitRepo m = (view (pushd into >> m))
+  inGitRepo m = (sh (pushd into >> m))
 
 listRemoteTags
   :: Text
