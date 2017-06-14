@@ -125,6 +125,7 @@ cloneShallow from ref into = do
          [ "clone"
          , "-q"
          , "-c", "advice.detachedHead=false"
+         , "-c", "remote.origin.fetch=+refs/heads/*:refs/remotes/origin/*"
          , "--depth", "1"
          , from
          , pathToTextUnsafe into
