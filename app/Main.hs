@@ -307,8 +307,11 @@ listSourcePaths = do
   paths <- getPaths
   traverse_ (echoT . pathToTextUnsafe) paths
 
-exec :: [String] -> Bool -> IO ()
-exec execNames onlyDeps = do
+-- | helper for calling through to @purs@
+--
+-- extra args will be appended to the options
+exec :: [String] -> Bool -> [String] -> IO ()
+exec execNames onlyDeps passthroughOptions = do
   paths <- getPaths
   let cmdParts = tail execNames
       srcParts = [ "src" </> "**" </> "*.purs" | not onlyDeps ]
@@ -316,7 +319,8 @@ exec execNames onlyDeps = do
     =<< Process.waitForProcess
     =<< Process.runProcess
           (head execNames)
-          (cmdParts <> map Path.encodeString (srcParts <> paths))
+          (cmdParts <> passthroughOptions
+                    <> map Path.encodeString (srcParts <> paths))
           Nothing -- no special path to the working dir
           Nothing -- no env vars
           Nothing -- use existing stdin
@@ -455,10 +459,16 @@ main = do
             (Opts.info (install <$> pkg Opts.<**> Opts.helper)
             (Opts.progDesc "Install the named package"))
         , Opts.command "build"
-            (Opts.info (exec ["purs", "compile"] <$> onlyDeps "Compile only the package's dependencies" Opts.<**> Opts.helper)
+            (Opts.info (exec ["purs", "compile"]
+                        <$> onlyDeps "Compile only the package's dependencies"
+                        <*> passthroughArgs "purs compile"
+                        Opts.<**> Opts.helper)
             (Opts.progDesc "Build the current package and dependencies"))
         , Opts.command "repl"
-            (Opts.info (exec ["purs", "repl"] <$> onlyDeps "Load only the package's dependencies" Opts.<**> Opts.helper)
+            (Opts.info (exec ["purs", "repl"]
+                        <$> onlyDeps "Load only the package's dependencies"
+                        <*> passthroughArgs "purs repl"
+                        Opts.<**> Opts.helper)
             (Opts.progDesc "Open an interactive environment for PureScript"))
         , Opts.command "dependencies"
             (Opts.info (pure listDependencies)
@@ -493,6 +503,10 @@ main = do
              Opts.long "only-dependencies"
           <> Opts.short 'd'
           <> Opts.help help
+
+        passthroughArgs cmd = many $ Opts.strOption $
+             Opts.long "pass-through"
+          <> Opts.help ("Options passed through to " ++ cmd ++ "; reuse for multiple values")
 
         sorted = Opts.switch $
              Opts.long "sort"
