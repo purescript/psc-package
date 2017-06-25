@@ -504,9 +504,9 @@ main = do
           <> Opts.short 'd'
           <> Opts.help help
 
-        passthroughArgs cmd = many $ Opts.strOption $
-             Opts.long "pass-through"
-          <> Opts.help ("Options passed through to " ++ cmd ++ "; reuse for multiple values")
+        passthroughArgs cmd = many $ Opts.strArgument $
+             Opts.help ("Options passed through to " <> cmd <> "; use -- to separate")
+          <> Opts.metavar ("`" <> cmd <> "`" <> "-options")
 
         sorted = Opts.switch $
              Opts.long "sort"
