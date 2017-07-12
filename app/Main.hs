@@ -175,15 +175,21 @@ installOrUpdate set pkgName PackageInfo{ repo, version } = do
   pure pkgDir
 
 getTransitiveDeps :: PackageSet -> [PackageName] -> IO [(PackageName, PackageInfo)]
-getTransitiveDeps db depends = do
-  pkgs <- for depends $ \pkg ->
-    case Map.lookup pkg db of
-      Nothing -> do
-        echoT ("Package " <> runPackageName pkg <> " does not exist in package set")
-        exit (ExitFailure 1)
-      Just PackageInfo{ dependencies } -> return (pkg : dependencies)
-  let unique = Set.toList (foldMap Set.fromList pkgs)
-  return (mapMaybe (\name -> fmap (name, ) (Map.lookup name db)) unique)
+getTransitiveDeps db deps =
+    Map.toList . fold <$> traverse (go Set.empty) deps
+  where
+    go seen pkg
+      | pkg `Set.member` seen = do
+          echoT ("Cycle in package dependencies at package " <> runPackageName pkg)
+          exit (ExitFailure 1)
+      | otherwise =
+        case Map.lookup pkg db of
+          Nothing -> do
+            echoT ("Package " <> runPackageName pkg <> " does not exist in package set")
+            exit (ExitFailure 1)
+          Just info@PackageInfo{ dependencies } -> do
+            m <- fold <$> traverse (go (Set.insert pkg seen)) dependencies
+            return (Map.insert pkg info m)
 
 updateImpl :: PackageConfig -> IO ()
 updateImpl config@PackageConfig{ depends } = do
@@ -416,10 +422,11 @@ verifyPackageSet = do
   let installOrUpdate' (name, pkgInfo) = (name, ) <$> installOrUpdate (set pkg) name pkgInfo
   paths <- Map.fromList <$> traverse installOrUpdate' (Map.toList db)
 
-  for_ (Map.toList db) $ \(name, PackageInfo{..}) -> do
+  for_ (Map.toList db) $ \(name, _) -> do
     let dirFor pkgName = fromMaybe (error ("verifyPackageSet: no directory for " <> show pkgName)) (Map.lookup pkgName paths)
     echoT ("Verifying package " <> runPackageName name)
-    let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs")) . dirFor) (name : dependencies)
+    dependencies <- map fst <$> getTransitiveDeps db [name]
+    let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs")) . dirFor) dependencies
     procs "purs" ("compile" : srcGlobs) empty
 
 main :: IO ()
