@@ -224,12 +224,6 @@ initialize = do
   packageNameFromPWD =
     either (const untitledPackageName) id . mkPackageName
 
-update :: IO ()
-update = do
-  pkg <- readPackageFile
-  updateImpl pkg
-  echoT "Update complete"
-
 install :: String -> IO ()
 install pkgName' = do
   pkg <- readPackageFile
@@ -307,11 +301,14 @@ listSourcePaths = do
   paths <- getPaths
   traverse_ (echoT . pathToTextUnsafe) paths
 
--- | helper for calling through to @purs@
+-- | Helper for calling through to @purs@
 --
--- extra args will be appended to the options
+-- Extra args will be appended to the options
 exec :: [String] -> Bool -> [String] -> IO ()
 exec execNames onlyDeps passthroughOptions = do
+  pkg <- readPackageFile
+  updateImpl pkg
+
   paths <- getPaths
   let cmdParts = tail execNames
       srcParts = [ "src" </> "**" </> "*.purs" | not onlyDeps ]
@@ -449,9 +446,6 @@ main = do
         [ Opts.command "init"
             (Opts.info (pure initialize)
             (Opts.progDesc "Initialize a new package"))
-        , Opts.command "update"
-            (Opts.info (pure update)
-            (Opts.progDesc "Update dependencies"))
         , Opts.command "uninstall"
             (Opts.info (uninstall <$> pkg Opts.<**> Opts.helper)
             (Opts.progDesc "Uninstall the named package"))
