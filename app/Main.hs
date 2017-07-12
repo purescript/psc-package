@@ -8,6 +8,7 @@
 module Main where
 
 import qualified Control.Foldl as Foldl
+import           Control.Concurrent.Async (forConcurrently_)
 import qualified Data.Aeson as Aeson
 import           Data.Aeson.Encode.Pretty
 import           Data.Foldable (fold, for_, traverse_)
@@ -168,7 +169,6 @@ writePackageSet PackageConfig{ set } =
 
 installOrUpdate :: Text -> PackageName -> PackageInfo -> IO Turtle.FilePath
 installOrUpdate set pkgName PackageInfo{ repo, version } = do
-  echoT ("Updating " <> runPackageName pkgName)
   let pkgDir = ".psc-package" </> fromText set </> fromText (runPackageName pkgName) </> fromText version
   exists <- testdir pkgDir
   unless exists . void $ cloneShallow repo version pkgDir
@@ -197,7 +197,7 @@ updateImpl config@PackageConfig{ depends } = do
   db <- readPackageSet config
   trans <- getTransitiveDeps db depends
   echoT ("Updating " <> pack (show (length trans)) <> " packages...")
-  for_ trans $ \(pkgName, pkg) -> installOrUpdate (set config) pkgName pkg
+  forConcurrently_ trans $ \(pkgName, pkg) -> installOrUpdate (set config) pkgName pkg
 
 getPureScriptVersion :: IO Version
 getPureScriptVersion = do
