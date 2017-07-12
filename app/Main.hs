@@ -54,14 +54,6 @@ data PackageConfig = PackageConfig
 pathToTextUnsafe :: Turtle.FilePath -> Text
 pathToTextUnsafe = either (error "Path.toText failed") id . Path.toText
 
-defaultPackage :: Version -> PackageName -> PackageConfig
-defaultPackage pursVersion pkgName =
-  PackageConfig { name    = pkgName
-                , depends = [ preludePackageName ]
-                , set     = "psc-" <> pack (showVersion pursVersion)
-                , source  = "https://github.com/purescript/package-sets.git"
-                }
-
 readPackageFile :: IO PackageConfig
 readPackageFile = do
   exists <- testfile packageFile
@@ -213,24 +205,37 @@ getPureScriptVersion = do
            echoT "Unable to parse output of purs --version" >> exit (ExitFailure 1)
     _ -> echoT "Unexpected output from purs --version" >> exit (ExitFailure 1)
 
-initialize :: IO ()
-initialize = do
-  exists <- testfile "psc-package.json"
-  when exists $ do
-    echoT "psc-package.json already exists"
-    exit (ExitFailure 1)
-  echoT "Initializing new project in current directory"
-  pkgName <- packageNameFromPWD . pathToTextUnsafe . Path.filename <$> pwd
-  pursVersion <- getPureScriptVersion
-  echoT ("Using the default package set for PureScript compiler version " <>
-    fromString (showVersion pursVersion))
-  let pkg = defaultPackage pursVersion pkgName
-  writePackageFile pkg
-  updateImpl pkg
+initialize :: Maybe (Text, Maybe Text) -> IO ()
+initialize setAndSource = do
+    exists <- testfile "psc-package.json"
+    when exists $ do
+      echoT "psc-package.json already exists"
+      exit (ExitFailure 1)
+    echoT "Initializing new project in current directory"
+    pkgName <- packageNameFromPWD . pathToTextUnsafe . Path.filename <$> pwd
+    pkg <- case setAndSource of
+      Nothing -> do
+        pursVersion <- getPureScriptVersion
+        echoT ("Using the default package set for PureScript compiler version " <>
+          fromString (showVersion pursVersion))
+        echoT "(Use --source / --set to override this behavior)"
+        pure PackageConfig { name    = pkgName
+                           , depends = [ preludePackageName ]
+                           , source  = "https://github.com/purescript/package-sets.git"
+                           , set     = ("psc-" <> pack (showVersion pursVersion))
+                           }
+      Just (set, source) ->
+        pure PackageConfig { name    = pkgName
+                           , depends = [ preludePackageName ]
+                           , source  = fromMaybe "https://github.com/purescript/package-sets.git" source
+                           , set
+                           }
 
+    writePackageFile pkg
+    updateImpl pkg
   where
-  packageNameFromPWD =
-    either (const untitledPackageName) id . mkPackageName
+    packageNameFromPWD =
+      either (const untitledPackageName) id . mkPackageName
 
 install :: String -> IO ()
 install pkgName' = do
@@ -453,7 +458,9 @@ main = do
     commands :: Parser (IO ())
     commands = (Opts.subparser . fold)
         [ Opts.command "init"
-            (Opts.info (pure initialize)
+            (Opts.info (initialize <$> optional ((,) <$> (fromString <$> set)
+                                                     <*> optional (fromString <$> source))
+                                   Opts.<**> Opts.helper)
             (Opts.progDesc "Initialize a new package"))
         , Opts.command "uninstall"
             (Opts.info (uninstall <$> pkg Opts.<**> Opts.helper)
@@ -480,7 +487,7 @@ main = do
             (Opts.info (pure listSourcePaths)
             (Opts.progDesc "List all (active) source paths for dependencies"))
         , Opts.command "available"
-            (Opts.info (listPackages <$> sorted)
+            (Opts.info (listPackages <$> sorted Opts.<**> Opts.helper)
             (Opts.progDesc "List all packages available in the package set"))
         , Opts.command "updates"
             (Opts.info (checkForUpdates <$> apply <*> applyMajor Opts.<**> Opts.helper)
@@ -493,6 +500,14 @@ main = do
         pkg = Opts.strArgument $
              Opts.metavar "PACKAGE"
           <> Opts.help "The name of the package to install"
+
+        source = Opts.strOption $
+             Opts.long "source"
+          <> Opts.help "The Git repository for the package set"
+
+        set = Opts.strOption $
+             Opts.long "set"
+          <> Opts.help "The package set tag name"
 
         apply = Opts.switch $
              Opts.long "apply"
