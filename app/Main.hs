@@ -168,10 +168,11 @@ writePackageSet PackageConfig{ set } =
 
 installOrUpdate :: Text -> PackageName -> PackageInfo -> IO Turtle.FilePath
 installOrUpdate set pkgName PackageInfo{ repo, version } = do
-  echoT ("Updating " <> runPackageName pkgName)
   let pkgDir = ".psc-package" </> fromText set </> fromText (runPackageName pkgName) </> fromText version
   exists <- testdir pkgDir
-  unless exists . void $ cloneShallow repo version pkgDir
+  unless exists . void $ do
+    echoT ("Updating " <> runPackageName pkgName)
+    cloneShallow repo version pkgDir
   pure pkgDir
 
 getTransitiveDeps :: PackageSet -> [PackageName] -> IO [(PackageName, PackageInfo)]
