@@ -4,6 +4,11 @@
 
 `psc-package` is an executable which helps manage PureScript dependencies via Git. It can be used directly, but it is also designed to be used by external tools.
 
+## Installation
+
+- Download the binary for your platform from [the releases page](https://github.com/purescript/psc-package/releases), and copy it somewhere on your PATH, or
+- Build from source, using `stack install`. 
+
 ## Design Goals
 
 - `psc-package` should enable simple package management without the need to run Node (compare with Bower).
@@ -86,7 +91,7 @@ Please note that your package will be removed from the set if it is not kept up 
 Adding a package is a manual process right now. We would like to add commands to make this process simpler, but for now, please follow these steps:
 
 - Tag a release of your library
-- Run the `dependencies` command to get the list of transitive dependencies
+- Run the `dependencies` command to get the list of (transitive) dependencies, or copy the dependencies from your `psc-package.json` file
 - Make a pull request on the package set repository (against `master`) to add a new entry to `packages.json`. Use the dependency information above to fill in the fields, and the name of your new tag.
 
 Travis will verify your package builds correctly, and then we will try to merge your pull request. Your package will then be available in the next tagged package set.

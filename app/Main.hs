@@ -8,6 +8,7 @@
 module Main where
 
 import qualified Control.Foldl as Foldl
+import           Control.Concurrent.Async (forConcurrently_)
 import qualified Data.Aeson as Aeson
 import           Data.Aeson.Encode.Pretty
 import           Data.Foldable (fold, for_, traverse_)
@@ -52,14 +53,6 @@ data PackageConfig = PackageConfig
 
 pathToTextUnsafe :: Turtle.FilePath -> Text
 pathToTextUnsafe = either (error "Path.toText failed") id . Path.toText
-
-defaultPackage :: Version -> PackageName -> PackageConfig
-defaultPackage pursVersion pkgName =
-  PackageConfig { name    = pkgName
-                , depends = [ preludePackageName ]
-                , set     = "psc-" <> pack (showVersion pursVersion)
-                , source  = "https://github.com/purescript/package-sets.git"
-                }
 
 readPackageFile :: IO PackageConfig
 readPackageFile = do
@@ -182,21 +175,27 @@ writePackageSet PackageConfig{ set } =
 
 installOrUpdate :: Text -> PackageName -> PackageInfo -> IO Turtle.FilePath
 installOrUpdate set pkgName PackageInfo{ repo, version } = do
-  echoT ("Updating " <> runPackageName pkgName)
   let pkgDir = ".psc-package" </> fromText set </> fromText (runPackageName pkgName) </> fromText version
-  void $ cloneShallow repo version pkgDir
+  echoT ("Updating " <> runPackageName pkgName)
+  cloneShallow repo version pkgDir
   pure pkgDir
 
 getTransitiveDeps :: PackageSet -> [PackageName] -> IO [(PackageName, PackageInfo)]
-getTransitiveDeps db depends = do
-  pkgs <- for depends $ \pkg ->
-    case Map.lookup pkg db of
-      Nothing -> do
-        echoT ("Package " <> runPackageName pkg <> " does not exist in package set")
-        exit (ExitFailure 1)
-      Just PackageInfo{ dependencies } -> return (pkg : dependencies)
-  let unique = Set.toList (foldMap Set.fromList pkgs)
-  return (mapMaybe (\name -> fmap (name, ) (Map.lookup name db)) unique)
+getTransitiveDeps db deps =
+    Map.toList . fold <$> traverse (go Set.empty) deps
+  where
+    go seen pkg
+      | pkg `Set.member` seen = do
+          echoT ("Cycle in package dependencies at package " <> runPackageName pkg)
+          exit (ExitFailure 1)
+      | otherwise =
+        case Map.lookup pkg db of
+          Nothing -> do
+            echoT ("Package " <> runPackageName pkg <> " does not exist in package set")
+            exit (ExitFailure 1)
+          Just info@PackageInfo{ dependencies } -> do
+            m <- fold <$> traverse (go (Set.insert pkg seen)) dependencies
+            return (Map.insert pkg info m)
 
 updateImpl :: PackageConfig -> IO ()
 updateImpl config@PackageConfig{ depends } = do
@@ -204,7 +203,7 @@ updateImpl config@PackageConfig{ depends } = do
   db <- readPackageSet config
   trans <- getTransitiveDeps db depends
   echoT ("Updating " <> pack (show (length trans)) <> " packages...")
-  for_ trans $ \(pkgName, pkg) -> installOrUpdate (set config) pkgName pkg
+  forConcurrently_ trans $ \(pkgName, pkg) -> installOrUpdate (set config) pkgName pkg
 
 getPureScriptVersion :: IO Version
 getPureScriptVersion = do
@@ -218,30 +217,37 @@ getPureScriptVersion = do
            echoT "Unable to parse output of purs --version" >> exit (ExitFailure 1)
     _ -> echoT "Unexpected output from purs --version" >> exit (ExitFailure 1)
 
-initialize :: IO ()
-initialize = do
-  exists <- testfile "psc-package.json"
-  when exists $ do
-    echoT "psc-package.json already exists"
-    exit (ExitFailure 1)
-  echoT "Initializing new project in current directory"
-  pkgName <- packageNameFromPWD . pathToTextUnsafe . Path.filename <$> pwd
-  pursVersion <- getPureScriptVersion
-  echoT ("Using the default package set for PureScript compiler version " <>
-    fromString (showVersion pursVersion))
-  let pkg = defaultPackage pursVersion pkgName
-  writePackageFile pkg
-  updateImpl pkg
+initialize :: Maybe (Text, Maybe Text) -> IO ()
+initialize setAndSource = do
+    exists <- testfile "psc-package.json"
+    when exists $ do
+      echoT "psc-package.json already exists"
+      exit (ExitFailure 1)
+    echoT "Initializing new project in current directory"
+    pkgName <- packageNameFromPWD . pathToTextUnsafe . Path.filename <$> pwd
+    pkg <- case setAndSource of
+      Nothing -> do
+        pursVersion <- getPureScriptVersion
+        echoT ("Using the default package set for PureScript compiler version " <>
+          fromString (showVersion pursVersion))
+        echoT "(Use --source / --set to override this behavior)"
+        pure PackageConfig { name    = pkgName
+                           , depends = [ preludePackageName ]
+                           , source  = "https://github.com/purescript/package-sets.git"
+                           , set     = ("psc-" <> pack (showVersion pursVersion))
+                           }
+      Just (set, source) ->
+        pure PackageConfig { name    = pkgName
+                           , depends = [ preludePackageName ]
+                           , source  = fromMaybe "https://github.com/purescript/package-sets.git" source
+                           , set
+                           }
 
+    writePackageFile pkg
+    updateImpl pkg
   where
-  packageNameFromPWD =
-    either (const untitledPackageName) id . mkPackageName
-
-update :: IO ()
-update = do
-  pkg <- readPackageFile
-  updateImpl pkg
-  echoT "Update complete"
+    packageNameFromPWD =
+      either (const untitledPackageName) id . mkPackageName
 
 install :: String -> IO ()
 install pkgName' = do
@@ -320,8 +326,14 @@ listSourcePaths = do
   paths <- getPaths
   traverse_ (echoT . pathToTextUnsafe) paths
 
-exec :: [String] -> Bool -> IO ()
-exec execNames onlyDeps = do
+-- | Helper for calling through to @purs@
+--
+-- Extra args will be appended to the options
+exec :: [String] -> Bool -> [String] -> IO ()
+exec execNames onlyDeps passthroughOptions = do
+  pkg <- readPackageFile
+  updateImpl pkg
+
   paths <- getPaths
   let cmdParts = tail execNames
       srcParts = [ "src" </> "**" </> "*.purs" | not onlyDeps ]
@@ -329,7 +341,8 @@ exec execNames onlyDeps = do
     =<< Process.waitForProcess
     =<< Process.runProcess
           (head execNames)
-          (cmdParts <> map Path.encodeString (srcParts <> paths))
+          (cmdParts <> passthroughOptions
+                    <> map Path.encodeString (srcParts <> paths))
           Nothing -- no special path to the working dir
           Nothing -- no env vars
           Nothing -- use existing stdin
@@ -425,10 +438,11 @@ verifyPackageSet = do
   let installOrUpdate' (name, pkgInfo) = (name, ) <$> installOrUpdate (set pkg) name pkgInfo
   paths <- Map.fromList <$> traverse installOrUpdate' (Map.toList db)
 
-  for_ (Map.toList db) $ \(name, PackageInfo{..}) -> do
+  for_ (Map.toList db) $ \(name, _) -> do
     let dirFor pkgName = fromMaybe (error ("verifyPackageSet: no directory for " <> show pkgName)) (Map.lookup pkgName paths)
     echoT ("Verifying package " <> runPackageName name)
-    let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs")) . dirFor) (name : dependencies)
+    dependencies <- map fst <$> getTransitiveDeps db [name]
+    let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs")) . dirFor) dependencies
     procs "purs" ("compile" : srcGlobs) empty
 
 main :: IO ()
@@ -456,11 +470,10 @@ main = do
     commands :: Parser (IO ())
     commands = (Opts.subparser . fold)
         [ Opts.command "init"
-            (Opts.info (pure initialize)
+            (Opts.info (initialize <$> optional ((,) <$> (fromString <$> set)
+                                                     <*> optional (fromString <$> source))
+                                   Opts.<**> Opts.helper)
             (Opts.progDesc "Initialize a new package"))
-        , Opts.command "update"
-            (Opts.info (pure update)
-            (Opts.progDesc "Update dependencies"))
         , Opts.command "uninstall"
             (Opts.info (uninstall <$> pkg Opts.<**> Opts.helper)
             (Opts.progDesc "Uninstall the named package"))
@@ -468,10 +481,16 @@ main = do
             (Opts.info (install <$> pkg Opts.<**> Opts.helper)
             (Opts.progDesc "Install the named package"))
         , Opts.command "build"
-            (Opts.info (exec ["purs", "compile"] <$> onlyDeps "Compile only the package's dependencies" Opts.<**> Opts.helper)
+            (Opts.info (exec ["purs", "compile"]
+                        <$> onlyDeps "Compile only the package's dependencies"
+                        <*> passthroughArgs "purs compile"
+                        Opts.<**> Opts.helper)
             (Opts.progDesc "Build the current package and dependencies"))
         , Opts.command "repl"
-            (Opts.info (exec ["purs", "repl"] <$> onlyDeps "Load only the package's dependencies" Opts.<**> Opts.helper)
+            (Opts.info (exec ["purs", "repl"]
+                        <$> onlyDeps "Load only the package's dependencies"
+                        <*> passthroughArgs "purs repl"
+                        Opts.<**> Opts.helper)
             (Opts.progDesc "Open an interactive environment for PureScript"))
         , Opts.command "dependencies"
             (Opts.info (pure listDependencies)
@@ -480,7 +499,7 @@ main = do
             (Opts.info (pure listSourcePaths)
             (Opts.progDesc "List all (active) source paths for dependencies"))
         , Opts.command "available"
-            (Opts.info (listPackages <$> sorted)
+            (Opts.info (listPackages <$> sorted Opts.<**> Opts.helper)
             (Opts.progDesc "List all packages available in the package set"))
         , Opts.command "updates"
             (Opts.info (checkForUpdates <$> apply <*> applyMajor Opts.<**> Opts.helper)
@@ -494,6 +513,14 @@ main = do
              Opts.metavar "PACKAGE"
           <> Opts.help "The name of the package to install"
 
+        source = Opts.strOption $
+             Opts.long "source"
+          <> Opts.help "The Git repository for the package set"
+
+        set = Opts.strOption $
+             Opts.long "set"
+          <> Opts.help "The package set tag name"
+
         apply = Opts.switch $
              Opts.long "apply"
           <> Opts.help "Apply all minor package updates"
@@ -506,6 +533,10 @@ main = do
              Opts.long "only-dependencies"
           <> Opts.short 'd'
           <> Opts.help help
+
+        passthroughArgs cmd = many $ Opts.strArgument $
+             Opts.help ("Options passed through to " <> cmd <> "; use -- to separate")
+          <> Opts.metavar ("`" <> cmd <> "`" <> "-options")
 
         sorted = Opts.switch $
              Opts.long "sort"
