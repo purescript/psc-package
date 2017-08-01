@@ -237,6 +237,12 @@ initialize setAndSource = do
     packageNameFromPWD =
       either (const untitledPackageName) id . mkPackageName
 
+update :: IO ()
+update = do
+  pkg <- readPackageFile
+  updateImpl pkg
+  echoT "Update complete"
+
 install :: String -> IO ()
 install pkgName' = do
   pkg <- readPackageFile
@@ -462,6 +468,9 @@ main = do
                                                      <*> optional (fromString <$> source))
                                    Opts.<**> Opts.helper)
             (Opts.progDesc "Initialize a new package"))
+        , Opts.command "update"
+            (Opts.info (pure update)
+            (Opts.progDesc "Update dependencies"))
         , Opts.command "uninstall"
             (Opts.info (uninstall <$> pkg Opts.<**> Opts.helper)
             (Opts.progDesc "Uninstall the named package"))
