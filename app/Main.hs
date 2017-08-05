@@ -191,7 +191,7 @@ updateImpl config@PackageConfig{ depends } = do
   db <- readPackageSet config
   trans <- getTransitiveDeps db depends
   echoT ("Updating " <> pack (show (length trans)) <> " packages...")
-  forConcurrently_ trans $ \(pkgName, pkg) -> installOrUpdate (set config) pkgName pkg
+  forConcurrently_ trans . uncurry $ installOrUpdate (set config)
 
 getPureScriptVersion :: IO Version
 getPureScriptVersion = do
@@ -222,7 +222,7 @@ initialize setAndSource = do
         pure PackageConfig { name    = pkgName
                            , depends = [ preludePackageName ]
                            , source  = "https://github.com/purescript/package-sets.git"
-                           , set     = ("psc-" <> pack (showVersion pursVersion))
+                           , set     = "psc-" <> pack (showVersion pursVersion)
                            }
       Just (set, source) ->
         pure PackageConfig { name    = pkgName
@@ -248,17 +248,19 @@ install pkgName' = do
   pkg <- readPackageFile
   pkgName <- packageNameFromString pkgName'
   let pkg' = pkg { depends = nub (pkgName : depends pkg) }
-  updateImpl pkg'
-  writePackageFile pkg'
-  echoT "psc-package.json file was updated"
+  updateAndWritePackageFile pkg'
 
 uninstall :: String -> IO ()
 uninstall pkgName' = do
   pkg <- readPackageFile
   pkgName <- packageNameFromString pkgName'
   let pkg' = pkg { depends = filter (/= pkgName) $ depends pkg }
-  updateImpl pkg'
-  writePackageFile pkg'
+  updateAndWritePackageFile pkg'
+
+updateAndWritePackageFile :: PackageConfig -> IO ()
+updateAndWritePackageFile pkg = do
+  updateImpl pkg
+  writePackageFile pkg
   echoT "psc-package.json file was updated"
 
 packageNameFromString :: String -> IO PackageName
@@ -351,7 +353,7 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
     echoT ("Checking " <> pack (show (Map.size db)) <> " packages for updates.")
     echoT "Warning: this could take some time!"
 
-    newDb <- Map.fromList <$> (for (Map.toList db) $ \(name, p@PackageInfo{ repo, version }) -> do
+    newDb <- Map.fromList <$> for (Map.toList db) (\(name, p@PackageInfo{ repo, version }) -> do
       echoT ("Checking package " <> runPackageName name)
       tagLines <- Turtle.fold (listRemoteTags repo) Foldl.list
       let tags = mapMaybe parseTag tagLines
@@ -361,22 +363,22 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
                 case filter (isMinorReleaseFrom parts) tags of
                   [] -> pure version
                   minorReleases -> do
-                    echoT ("New minor release available")
-                    case applyMinorUpdates of
-                      True -> do
+                    echoT "New minor release available"
+                    if applyMinorUpdates
+                      then do
                         let latestMinorRelease = maximum minorReleases
                         pure ("v" <> T.intercalate "." (map (pack . show) latestMinorRelease))
-                      False -> pure version
+                      else pure version
               applyMajor =
                 case filter (isMajorReleaseFrom parts) tags of
                   [] -> applyMinor
                   newReleases -> do
-                    echoT ("New major release available")
-                    case applyMajorUpdates of
-                      True -> do
+                    echoT "New major release available"
+                    if applyMajorUpdates
+                      then do
                         let latestRelease = maximum newReleases
                         pure ("v" <> T.intercalate "." (map (pack . show) latestRelease))
-                      False -> applyMinor
+                      else applyMinor
           in applyMajor
         _ -> do
           echoT "Unable to parse version string"
@@ -443,8 +445,7 @@ main :: IO ()
 main = do
     IO.hSetEncoding IO.stdout IO.utf8
     IO.hSetEncoding IO.stderr IO.utf8
-    cmd <- Opts.handleParseResult . execParserPure opts =<< getArgs
-    cmd
+    join $ Opts.handleParseResult . execParserPure opts =<< getArgs
   where
     opts        = Opts.info (versionInfo <*> Opts.helper <*> commands) infoModList
     infoModList = Opts.fullDesc <> headerInfo <> footerInfo
