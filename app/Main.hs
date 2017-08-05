@@ -248,17 +248,19 @@ install pkgName' = do
   pkg <- readPackageFile
   pkgName <- packageNameFromString pkgName'
   let pkg' = pkg { depends = nub (pkgName : depends pkg) }
-  updateImpl pkg'
-  writePackageFile pkg'
-  echoT "psc-package.json file was updated"
+  updateAndWritePackageFile pkg'
 
 uninstall :: String -> IO ()
 uninstall pkgName' = do
   pkg <- readPackageFile
   pkgName <- packageNameFromString pkgName'
   let pkg' = pkg { depends = filter (/= pkgName) $ depends pkg }
-  updateImpl pkg'
-  writePackageFile pkg'
+  updateAndWritePackageFile pkg'
+
+updateAndWritePackageFile :: PackageConfig -> IO ()
+updateAndWritePackageFile pkg = do
+  updateImpl pkg
+  writePackageFile pkg
   echoT "psc-package.json file was updated"
 
 packageNameFromString :: String -> IO PackageName
