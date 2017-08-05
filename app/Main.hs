@@ -222,7 +222,7 @@ initialize setAndSource = do
         pure PackageConfig { name    = pkgName
                            , depends = [ preludePackageName ]
                            , source  = "https://github.com/purescript/package-sets.git"
-                           , set     = ("psc-" <> pack (showVersion pursVersion))
+                           , set     = "psc-" <> pack (showVersion pursVersion)
                            }
       Just (set, source) ->
         pure PackageConfig { name    = pkgName
