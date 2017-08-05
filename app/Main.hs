@@ -364,11 +364,11 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
                   [] -> pure version
                   minorReleases -> do
                     echoT "New minor release available"
-                    case applyMinorUpdates of
-                      True -> do
+                    if applyMinorUpdates
+                      then do
                         let latestMinorRelease = maximum minorReleases
                         pure ("v" <> T.intercalate "." (map (pack . show) latestMinorRelease))
-                      False -> pure version
+                      else pure version
               applyMajor =
                 case filter (isMajorReleaseFrom parts) tags of
                   [] -> applyMinor
