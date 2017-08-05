@@ -353,7 +353,7 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
     echoT ("Checking " <> pack (show (Map.size db)) <> " packages for updates.")
     echoT "Warning: this could take some time!"
 
-    newDb <- Map.fromList <$> (for (Map.toList db) $ \(name, p@PackageInfo{ repo, version }) -> do
+    newDb <- Map.fromList <$> for (Map.toList db) (\(name, p@PackageInfo{ repo, version }) -> do
       echoT ("Checking package " <> runPackageName name)
       tagLines <- Turtle.fold (listRemoteTags repo) Foldl.list
       let tags = mapMaybe parseTag tagLines
