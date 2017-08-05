@@ -445,8 +445,7 @@ main :: IO ()
 main = do
     IO.hSetEncoding IO.stdout IO.utf8
     IO.hSetEncoding IO.stderr IO.utf8
-    cmd <- Opts.handleParseResult . execParserPure opts =<< getArgs
-    cmd
+    join $ Opts.handleParseResult . execParserPure opts =<< getArgs
   where
     opts        = Opts.info (versionInfo <*> Opts.helper <*> commands) infoModList
     infoModList = Opts.fullDesc <> headerInfo <> footerInfo
