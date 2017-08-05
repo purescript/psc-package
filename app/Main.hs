@@ -373,7 +373,7 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
                 case filter (isMajorReleaseFrom parts) tags of
                   [] -> applyMinor
                   newReleases -> do
-                    echoT ("New major release available")
+                    echoT "New major release available"
                     case applyMajorUpdates of
                       True -> do
                         let latestRelease = maximum newReleases
