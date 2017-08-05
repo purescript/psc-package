@@ -46,7 +46,7 @@ instance FromJSONKey PackageName where
 data PackageNameError
   = NotEmpty
   | TooLong Int
-  | InvalidChars [Char]
+  | InvalidChars String
   | RepeatedSeparators
   | MustNotBeginSeparator
   | MustNotEndSeparator
