@@ -191,7 +191,7 @@ updateImpl config@PackageConfig{ depends } = do
   db <- readPackageSet config
   trans <- getTransitiveDeps db depends
   echoT ("Updating " <> pack (show (length trans)) <> " packages...")
-  forConcurrently_ trans $ \(pkgName, pkg) -> installOrUpdate (set config) pkgName pkg
+  forConcurrently_ trans . uncurry $ installOrUpdate (set config)
 
 getPureScriptVersion :: IO Version
 getPureScriptVersion = do
