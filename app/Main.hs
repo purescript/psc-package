@@ -374,11 +374,11 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
                   [] -> applyMinor
                   newReleases -> do
                     echoT "New major release available"
-                    case applyMajorUpdates of
-                      True -> do
+                    if applyMajorUpdates
+                      then do
                         let latestRelease = maximum newReleases
                         pure ("v" <> T.intercalate "." (map (pack . show) latestRelease))
-                      False -> applyMinor
+                      else applyMinor
           in applyMajor
         _ -> do
           echoT "Unable to parse version string"
