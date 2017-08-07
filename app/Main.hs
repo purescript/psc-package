@@ -41,6 +41,10 @@ import           Types (PackageName, mkPackageName, runPackageName, untitledPack
 echoT :: Text -> IO ()
 echoT = Turtle.printf (Turtle.s % "\n")
 
+exitWithErr :: Text -> IO a
+exitWithErr errText = errT errText >> exit (ExitFailure 1)
+  where errT = traverse Turtle.err . textToLines
+
 packageFile :: Path.FilePath
 packageFile = "psc-package.json"
 
@@ -57,14 +61,10 @@ pathToTextUnsafe = either (error "Path.toText failed") id . Path.toText
 readPackageFile :: IO PackageConfig
 readPackageFile = do
   exists <- testfile packageFile
-  unless exists $ do
-    echoT "psc-package.json does not exist. Maybe you need to run psc-package init?"
-    exit (ExitFailure 1)
+  unless exists $ exitWithErr "psc-package.json does not exist. Maybe you need to run psc-package init?"
   mpkg <- Aeson.decodeStrict . encodeUtf8 <$> readTextFile packageFile
   case mpkg of
-    Nothing -> do
-      echoT "Unable to parse psc-package.json"
-      exit (ExitFailure 1)
+    Nothing -> exitWithErr "Unable to parse psc-package.json"
     Just pkg -> return pkg
 
 packageConfigToJSON :: PackageConfig -> Text
@@ -144,14 +144,10 @@ readPackageSet :: PackageConfig -> IO PackageSet
 readPackageSet PackageConfig{ set } = do
   let dbFile = ".psc-package" </> fromText set </> ".set" </> "packages.json"
   exists <- testfile dbFile
-  unless exists $ do
-    echoT $ format (fp%" does not exist") dbFile
-    exit (ExitFailure 1)
+  unless exists $ exitWithErr $ format (fp%" does not exist") dbFile
   mdb <- Aeson.decodeStrict . encodeUtf8 <$> readTextFile dbFile
   case mdb of
-    Nothing -> do
-      echoT "Unable to parse packages.json"
-      exit (ExitFailure 1)
+    Nothing -> exitWithErr "Unable to parse packages.json"
     Just db -> return db
 
 writePackageSet :: PackageConfig -> PackageSet -> IO ()
@@ -173,14 +169,12 @@ getTransitiveDeps db deps =
     Map.toList . fold <$> traverse (go Set.empty) deps
   where
     go seen pkg
-      | pkg `Set.member` seen = do
-          echoT ("Cycle in package dependencies at package " <> runPackageName pkg)
-          exit (ExitFailure 1)
+      | pkg `Set.member` seen =
+          exitWithErr ("Cycle in package dependencies at package " <> runPackageName pkg)
       | otherwise =
         case Map.lookup pkg db of
-          Nothing -> do
-            echoT ("Package " <> runPackageName pkg <> " does not exist in package set")
-            exit (ExitFailure 1)
+          Nothing ->
+            exitWithErr ("Package " <> runPackageName pkg <> " does not exist in package set")
           Just info@PackageInfo{ dependencies } -> do
             m <- fold <$> traverse (go (Set.insert pkg seen)) dependencies
             return (Map.insert pkg info m)
@@ -201,16 +195,13 @@ getPureScriptVersion = do
     [onlyLine]
       | results@(_ : _) <- Read.readP_to_S parseVersion (T.unpack onlyLine) ->
            pure (fst (maximumBy (comparing (length . versionBranch . fst)) results))
-      | otherwise ->
-           echoT "Unable to parse output of purs --version" >> exit (ExitFailure 1)
-    _ -> echoT "Unexpected output from purs --version" >> exit (ExitFailure 1)
+      | otherwise -> exitWithErr "Unable to parse output of purs --version"
+    _ -> exitWithErr "Unexpected output from purs --version"
 
 initialize :: Maybe (Text, Maybe Text) -> IO ()
 initialize setAndSource = do
     exists <- testfile "psc-package.json"
-    when exists $ do
-      echoT "psc-package.json already exists"
-      exit (ExitFailure 1)
+    when exists $ exitWithErr "psc-package.json already exists"
     echoT "Initializing new project in current directory"
     pkgName <- packageNameFromPWD . pathToTextUnsafe . Path.filename <$> pwd
     pkg <- case setAndSource of
@@ -268,9 +259,7 @@ packageNameFromString str =
   case mkPackageName (pack str) of
     Right pkgName ->
       pure pkgName
-    Left _ -> do
-      echoT ("Invalid package name: " <> pack (show str))
-      exit (ExitFailure 1)
+    Left _ -> exitWithErr $ "Invalid package name: " <> pack (show str)
 
 listDependencies :: IO ()
 listDependencies = do
