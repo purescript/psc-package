@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Types
+module Language.PureScript.Package.Types
   ( PackageName
   , mkPackageName
   , runPackageName

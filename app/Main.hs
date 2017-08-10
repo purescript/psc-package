@@ -36,7 +36,8 @@ import qualified System.Process as Process
 import qualified Text.ParserCombinators.ReadP as Read
 import           Turtle hiding (echo, fold, s, x)
 import qualified Turtle
-import           Types (PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
+
+import           Language.PureScript.Package.Types (PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
 
 echoT :: Text -> IO ()
 echoT = Turtle.printf (Turtle.s % "\n")
