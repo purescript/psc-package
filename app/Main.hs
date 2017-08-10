@@ -26,23 +26,17 @@ import qualified Turtle
 
 import Language.PureScript.Package.Types.PackageConfig (PackageConfig(..), name, depends, set, source, readPackageFile)
 import Language.PureScript.Package.Types.PackageInfo (PackageInfo(..), repo, version, dependencies)
-import Language.PureScript.Package.Types.PackageName (PackageName, runPackageName, packageNameFromString)
+import Language.PureScript.Package.Types.PackageName (PackageName, runPackageName)
 import Language.PureScript.Package.Types.PackageSet (PackageSet, readPackageSet, writePackageSet, getTransitiveDeps)
 import Language.PureScript.Package.Initialize (initialize)
 import Language.PureScript.Package.Install (install)
 import Language.PureScript.Package.Path (pathToTextUnsafe)
 import Language.PureScript.Package.Git (listRemoteTags)
-import Language.PureScript.Package.Update (update, updateImpl, installOrUpdate, updateAndWritePackageFile)
+import Language.PureScript.Package.Uninstall (uninstall)
+import Language.PureScript.Package.Update (update, updateImpl, installOrUpdate)
 
 echoT :: Text -> IO ()
 echoT = Turtle.printf (Turtle.s % "\n")
-
-uninstall :: String -> IO ()
-uninstall pkgName' = do
-  pkg <- readPackageFile
-  pkgName <- packageNameFromString pkgName'
-  let pkg' = pkg { depends = filter (/= pkgName) $ depends pkg }
-  updateAndWritePackageFile pkg'
 
 listDependencies :: IO ()
 listDependencies = do
