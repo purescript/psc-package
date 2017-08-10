@@ -7,8 +7,6 @@ module Main where
 
 import qualified Control.Foldl as Foldl
 import           Control.Concurrent.Async (forConcurrently_)
-import qualified Data.Aeson as Aeson
-import           Data.Aeson.Encode.Pretty
 import           Data.Foldable (fold, for_, traverse_)
 import qualified Data.Graph as G
 import           Data.List (maximumBy, nub)
@@ -18,9 +16,6 @@ import           Data.Ord (comparing)
 import qualified Data.Set as Set
 import           Data.Text (pack)
 import qualified Data.Text as T
-import           Data.Text.Encoding (encodeUtf8)
-import qualified Data.Text.Lazy as TL
-import qualified Data.Text.Lazy.Builder as TB
 import qualified Data.Text.Read as TR
 import           Data.Traversable (for)
 import           Data.Version (Version(..), parseVersion, showVersion)
@@ -37,9 +32,10 @@ import qualified Turtle
 import Language.PureScript.Package.Types.PackageConfig (PackageConfig(..), name, depends, set, source, readPackageFile, writePackageFile)
 import Language.PureScript.Package.Types.PackageInfo (PackageInfo(..), repo, version, dependencies)
 import Language.PureScript.Package.Types.PackageName (PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
+import Language.PureScript.Package.Types.PackageSet (PackageSet, getPackageSet, readPackageSet, writePackageSet)
 import Language.PureScript.Package.Install (installOrUpdate)
 import Language.PureScript.Package.Path (pathToTextUnsafe)
-import Language.PureScript.Package.Git (cloneShallow, listRemoteTags)
+import Language.PureScript.Package.Git (listRemoteTags)
 
 echoT :: Text -> IO ()
 echoT = Turtle.printf (Turtle.s % "\n")
@@ -47,37 +43,6 @@ echoT = Turtle.printf (Turtle.s % "\n")
 exitWithErr :: Text -> IO a
 exitWithErr errText = errT errText >> exit (ExitFailure 1)
   where errT = traverse Turtle.err . textToLines
-
-packageSetToJSON :: PackageSet -> Text
-packageSetToJSON =
-    TL.toStrict
-    . TB.toLazyText
-    . encodePrettyToTextBuilder' config
-  where
-    config = defConfig { confCompare = compare }
-
-type PackageSet = Map.Map PackageName PackageInfo
-
-getPackageSet :: PackageConfig -> IO ()
-getPackageSet PackageConfig{ source, set } = do
-  let pkgDir = ".psc-package" </> fromText set </> ".set"
-  exists <- testdir pkgDir
-  unless exists . void $ cloneShallow source set pkgDir
-
-readPackageSet :: PackageConfig -> IO PackageSet
-readPackageSet PackageConfig{ set } = do
-  let dbFile = ".psc-package" </> fromText set </> ".set" </> "packages.json"
-  exists <- testfile dbFile
-  unless exists $ exitWithErr $ format (fp%" does not exist") dbFile
-  mdb <- Aeson.decodeStrict . encodeUtf8 <$> readTextFile dbFile
-  case mdb of
-    Nothing -> exitWithErr "Unable to parse packages.json"
-    Just db -> return db
-
-writePackageSet :: PackageConfig -> PackageSet -> IO ()
-writePackageSet PackageConfig{ set } =
-  let dbFile = ".psc-package" </> fromText set </> ".set" </> "packages.json"
-  in writeTextFile dbFile . packageSetToJSON
 
 getTransitiveDeps :: PackageSet -> [PackageName] -> IO [(PackageName, PackageInfo)]
 getTransitiveDeps db deps =
