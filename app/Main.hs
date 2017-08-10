@@ -34,7 +34,7 @@ import qualified Text.ParserCombinators.ReadP as Read
 import           Turtle hiding (echo, fold, s, x)
 import qualified Turtle
 
-import Language.PureScript.Package.Types.PackageConfig (PackageConfig(..), name, depends, set, source)
+import Language.PureScript.Package.Types.PackageConfig (PackageConfig(..), name, depends, set, source, readPackageFile, writePackageFile)
 import Language.PureScript.Package.Types.PackageInfo (PackageInfo(..), repo, version, dependencies)
 import Language.PureScript.Package.Types.PackageName (PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
 
@@ -45,35 +45,8 @@ exitWithErr :: Text -> IO a
 exitWithErr errText = errT errText >> exit (ExitFailure 1)
   where errT = traverse Turtle.err . textToLines
 
-packageFile :: Path.FilePath
-packageFile = "psc-package.json"
-
 pathToTextUnsafe :: Turtle.FilePath -> Text
 pathToTextUnsafe = either (error "Path.toText failed") id . Path.toText
-
-readPackageFile :: IO PackageConfig
-readPackageFile = do
-  exists <- testfile packageFile
-  unless exists $ exitWithErr "psc-package.json does not exist. Maybe you need to run psc-package init?"
-  mpkg <- Aeson.decodeStrict . encodeUtf8 <$> readTextFile packageFile
-  case mpkg of
-    Nothing -> exitWithErr "Unable to parse psc-package.json"
-    Just pkg -> return pkg
-
-packageConfigToJSON :: PackageConfig -> Text
-packageConfigToJSON =
-    TL.toStrict
-    . TB.toLazyText
-    . encodePrettyToTextBuilder' config
-  where
-    config = defConfig
-               { confCompare =
-                   keyOrder [ "name"
-                            , "set"
-                            , "source"
-                            , "depends"
-                            ]
-               }
 
 packageSetToJSON :: PackageSet -> Text
 packageSetToJSON =
@@ -82,11 +55,6 @@ packageSetToJSON =
     . encodePrettyToTextBuilder' config
   where
     config = defConfig { confCompare = compare }
-
-writePackageFile :: PackageConfig -> IO ()
-writePackageFile =
-  writeTextFile packageFile
-  . packageConfigToJSON
 
 type PackageSet = Map.Map PackageName PackageInfo
 
