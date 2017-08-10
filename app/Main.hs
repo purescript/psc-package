@@ -6,7 +6,6 @@
 module Main where
 
 import qualified Control.Foldl as Foldl
-import           Control.Concurrent.Async (forConcurrently_)
 import           Data.Foldable (fold, for_, traverse_)
 import qualified Data.Graph as G
 import           Data.List (maximumBy, nub)
@@ -32,10 +31,11 @@ import qualified Turtle
 import Language.PureScript.Package.Types.PackageConfig (PackageConfig(..), name, depends, set, source, readPackageFile, writePackageFile)
 import Language.PureScript.Package.Types.PackageInfo (PackageInfo(..), repo, version, dependencies)
 import Language.PureScript.Package.Types.PackageName (PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
-import Language.PureScript.Package.Types.PackageSet (PackageSet, getPackageSet, readPackageSet, writePackageSet)
+import Language.PureScript.Package.Types.PackageSet (PackageSet, getPackageSet, readPackageSet, writePackageSet, getTransitiveDeps)
 import Language.PureScript.Package.Install (installOrUpdate)
 import Language.PureScript.Package.Path (pathToTextUnsafe)
 import Language.PureScript.Package.Git (listRemoteTags)
+import Language.PureScript.Package.Update (updateImpl)
 
 echoT :: Text -> IO ()
 echoT = Turtle.printf (Turtle.s % "\n")
@@ -43,29 +43,6 @@ echoT = Turtle.printf (Turtle.s % "\n")
 exitWithErr :: Text -> IO a
 exitWithErr errText = errT errText >> exit (ExitFailure 1)
   where errT = traverse Turtle.err . textToLines
-
-getTransitiveDeps :: PackageSet -> [PackageName] -> IO [(PackageName, PackageInfo)]
-getTransitiveDeps db deps =
-    Map.toList . fold <$> traverse (go Set.empty) deps
-  where
-    go seen pkg
-      | pkg `Set.member` seen =
-          exitWithErr ("Cycle in package dependencies at package " <> runPackageName pkg)
-      | otherwise =
-        case Map.lookup pkg db of
-          Nothing ->
-            exitWithErr ("Package " <> runPackageName pkg <> " does not exist in package set")
-          Just info@PackageInfo{ dependencies } -> do
-            m <- fold <$> traverse (go (Set.insert pkg seen)) dependencies
-            return (Map.insert pkg info m)
-
-updateImpl :: PackageConfig -> IO ()
-updateImpl config@PackageConfig{ depends } = do
-  getPackageSet config
-  db <- readPackageSet config
-  trans <- getTransitiveDeps db depends
-  echoT ("Updating " <> pack (show (length trans)) <> " packages...")
-  forConcurrently_ trans . uncurry $ installOrUpdate (set config)
 
 getPureScriptVersion :: IO Version
 getPureScriptVersion = do
