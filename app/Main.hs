@@ -1,15 +1,14 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TupleSections #-}
 
 module Main where
 
 import qualified Control.Foldl as Foldl
-import           Data.Foldable (fold, for_, traverse_)
+import           Data.Foldable (fold, traverse_)
 import qualified Data.Graph as G
 import qualified Data.Map as Map
-import           Data.Maybe (fromMaybe, mapMaybe)
+import           Data.Maybe (mapMaybe)
 import           Data.Text (pack)
 import qualified Data.Text as T
 import qualified Data.Text.Read as TR
@@ -33,7 +32,8 @@ import Language.PureScript.Package.Install (install)
 import Language.PureScript.Package.Path (pathToTextUnsafe)
 import Language.PureScript.Package.Git (listRemoteTags)
 import Language.PureScript.Package.Uninstall (uninstall)
-import Language.PureScript.Package.Update (update, updateImpl, installOrUpdate)
+import Language.PureScript.Package.Update (update, updateImpl)
+import Language.PureScript.Package.Verify (verifyPackageSet)
 
 echoT :: Text -> IO ()
 echoT = Turtle.printf (Turtle.s % "\n")
@@ -188,24 +188,6 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
     isMinorReleaseFrom (0 : xs) (0 : ys) = isMinorReleaseFrom xs ys
     isMinorReleaseFrom (x : xs) (y : ys) = y == x && ys > xs
     isMinorReleaseFrom _        _        = False
-
-verifyPackageSet :: IO ()
-verifyPackageSet = do
-  pkg <- readPackageFile
-  db <- readPackageSet pkg
-
-  echoT ("Verifying " <> pack (show (Map.size db)) <> " packages.")
-  echoT "Warning: this could take some time!"
-
-  let installOrUpdate' (name, pkgInfo) = (name, ) <$> installOrUpdate (set pkg) name pkgInfo
-  paths <- Map.fromList <$> traverse installOrUpdate' (Map.toList db)
-
-  for_ (Map.toList db) $ \(name, _) -> do
-    let dirFor pkgName = fromMaybe (error ("verifyPackageSet: no directory for " <> show pkgName)) (Map.lookup pkgName paths)
-    echoT ("Verifying package " <> runPackageName name)
-    dependencies <- map fst <$> getTransitiveDeps db [name]
-    let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs")) . dirFor) dependencies
-    procs "purs" ("compile" : srcGlobs) empty
 
 main :: IO ()
 main = do

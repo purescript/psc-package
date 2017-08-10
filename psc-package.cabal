@@ -25,7 +25,8 @@ library
                          Language.PureScript.Package.Install,
                          Language.PureScript.Package.Path,
                          Language.PureScript.Package.Uninstall,
-                         Language.PureScript.Package.Update
+                         Language.PureScript.Package.Update,
+                         Language.PureScript.Package.Verify
     build-depends:       base >= 4.7 && < 5,
                          aeson -any,
                          aeson-pretty -any,
