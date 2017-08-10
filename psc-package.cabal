@@ -21,6 +21,7 @@ library
                          Language.PureScript.Package.Types.PackageName,
                          Language.PureScript.Package.Types.PackageSet,
                          Language.PureScript.Package.Git,
+                         Language.PureScript.Package.Initialize,
                          Language.PureScript.Package.Install,
                          Language.PureScript.Package.Path,
                          Language.PureScript.Package.Update
@@ -29,6 +30,7 @@ library
                          aeson-pretty -any,
                          async -any,
                          containers,
+                         foldl -any,
                          turtle == 1.3.*,
                          text
     default-language:    Haskell2010

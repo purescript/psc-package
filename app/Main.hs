@@ -8,30 +8,28 @@ module Main where
 import qualified Control.Foldl as Foldl
 import           Data.Foldable (fold, for_, traverse_)
 import qualified Data.Graph as G
-import           Data.List (maximumBy, nub)
+import           Data.List (nub)
 import qualified Data.Map as Map
 import           Data.Maybe (fromMaybe, mapMaybe)
-import           Data.Ord (comparing)
-import qualified Data.Set as Set
 import           Data.Text (pack)
 import qualified Data.Text as T
 import qualified Data.Text.Read as TR
 import           Data.Traversable (for)
-import           Data.Version (Version(..), parseVersion, showVersion)
+import           Data.Version (showVersion)
 import qualified Filesystem.Path.CurrentOS as Path
 import qualified Options.Applicative as Opts
 import qualified Paths_psc_package as Paths
 import           System.Environment (getArgs)
 import qualified System.IO as IO
 import qualified System.Process as Process
-import qualified Text.ParserCombinators.ReadP as Read
 import           Turtle hiding (echo, fold, s, x)
 import qualified Turtle
 
 import Language.PureScript.Package.Types.PackageConfig (PackageConfig(..), name, depends, set, source, readPackageFile, writePackageFile)
 import Language.PureScript.Package.Types.PackageInfo (PackageInfo(..), repo, version, dependencies)
-import Language.PureScript.Package.Types.PackageName (PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
-import Language.PureScript.Package.Types.PackageSet (PackageSet, getPackageSet, readPackageSet, writePackageSet, getTransitiveDeps)
+import Language.PureScript.Package.Types.PackageName (PackageName, mkPackageName, runPackageName)
+import Language.PureScript.Package.Types.PackageSet (PackageSet, readPackageSet, writePackageSet, getTransitiveDeps)
+import Language.PureScript.Package.Initialize (initialize)
 import Language.PureScript.Package.Install (installOrUpdate)
 import Language.PureScript.Package.Path (pathToTextUnsafe)
 import Language.PureScript.Package.Git (listRemoteTags)
@@ -43,47 +41,6 @@ echoT = Turtle.printf (Turtle.s % "\n")
 exitWithErr :: Text -> IO a
 exitWithErr errText = errT errText >> exit (ExitFailure 1)
   where errT = traverse Turtle.err . textToLines
-
-getPureScriptVersion :: IO Version
-getPureScriptVersion = do
-  let pursProc = inproc "purs" [ "--version" ] empty
-  outputLines <- Turtle.fold (fmap lineToText pursProc) Foldl.list
-  case outputLines of
-    [onlyLine]
-      | results@(_ : _) <- Read.readP_to_S parseVersion (T.unpack onlyLine) ->
-           pure (fst (maximumBy (comparing (length . versionBranch . fst)) results))
-      | otherwise -> exitWithErr "Unable to parse output of purs --version"
-    _ -> exitWithErr "Unexpected output from purs --version"
-
-initialize :: Maybe (Text, Maybe Text) -> IO ()
-initialize setAndSource = do
-    exists <- testfile "psc-package.json"
-    when exists $ exitWithErr "psc-package.json already exists"
-    echoT "Initializing new project in current directory"
-    pkgName <- packageNameFromPWD . pathToTextUnsafe . Path.filename <$> pwd
-    pkg <- case setAndSource of
-      Nothing -> do
-        pursVersion <- getPureScriptVersion
-        echoT ("Using the default package set for PureScript compiler version " <>
-          fromString (showVersion pursVersion))
-        echoT "(Use --source / --set to override this behavior)"
-        pure PackageConfig { name    = pkgName
-                           , depends = [ preludePackageName ]
-                           , source  = "https://github.com/purescript/package-sets.git"
-                           , set     = "psc-" <> pack (showVersion pursVersion)
-                           }
-      Just (set, source) ->
-        pure PackageConfig { name    = pkgName
-                           , depends = [ preludePackageName ]
-                           , source  = fromMaybe "https://github.com/purescript/package-sets.git" source
-                           , set
-                           }
-
-    writePackageFile pkg
-    updateImpl pkg
-  where
-    packageNameFromPWD =
-      either (const untitledPackageName) id . mkPackageName
 
 update :: IO ()
 update = do
