@@ -38,10 +38,6 @@ import Language.PureScript.Package.Update (updateImpl)
 echoT :: Text -> IO ()
 echoT = Turtle.printf (Turtle.s % "\n")
 
-exitWithErr :: Text -> IO a
-exitWithErr errText = errT errText >> exit (ExitFailure 1)
-  where errT = traverse Turtle.err . textToLines
-
 update :: IO ()
 update = do
   pkg <- readPackageFile
@@ -73,7 +69,7 @@ packageNameFromString str =
   case mkPackageName (pack str) of
     Right pkgName ->
       pure pkgName
-    Left _ -> exitWithErr $ "Invalid package name: " <> pack (show str)
+    Left _ -> die $ "Invalid package name: " <> pack (show str)
 
 listDependencies :: IO ()
 listDependencies = do
