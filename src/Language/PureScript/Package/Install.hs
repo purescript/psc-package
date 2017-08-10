@@ -1,20 +1,18 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
-module Language.PureScript.Package.Install (installOrUpdate) where
+module Language.PureScript.Package.Install (install) where
 
-import           Turtle
+import           Data.List (nub)
 import           Prelude hiding (FilePath)
 
-import Language.PureScript.Package.Types.PackageInfo (PackageInfo(..))
-import Language.PureScript.Package.Types.PackageName (PackageName, runPackageName)
-import Language.PureScript.Package.Git (cloneShallow)
+import Language.PureScript.Package.Types.PackageConfig (readPackageFile, depends)
+import Language.PureScript.Package.Types.PackageName (packageNameFromString)
+import Language.PureScript.Package.Update (updateAndWritePackageFile)
 
-installOrUpdate :: Text -> PackageName -> PackageInfo -> IO FilePath
-installOrUpdate set pkgName PackageInfo{ repo, version } = do
-  let pkgDir = ".psc-package" </> fromText set </> fromText (runPackageName pkgName) </> fromText version
-  exists <- testdir pkgDir
-  unless exists . void $ do
-    echo $ "Updating " <> unsafeTextToLine (runPackageName pkgName)
-    cloneShallow repo version pkgDir
-  pure pkgDir
+install :: String -> IO ()
+install pkgName' = do
+  pkg <- readPackageFile
+  pkgName <- packageNameFromString pkgName'
+  let pkg' = pkg { depends = nub (pkgName : depends pkg) } -- TODO: ordnub
+  updateAndWritePackageFile pkg'

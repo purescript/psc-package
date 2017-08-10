@@ -8,7 +8,6 @@ module Main where
 import qualified Control.Foldl as Foldl
 import           Data.Foldable (fold, for_, traverse_)
 import qualified Data.Graph as G
-import           Data.List (nub)
 import qualified Data.Map as Map
 import           Data.Maybe (fromMaybe, mapMaybe)
 import           Data.Text (pack)
@@ -25,31 +24,18 @@ import qualified System.Process as Process
 import           Turtle hiding (echo, fold, s, x)
 import qualified Turtle
 
-import Language.PureScript.Package.Types.PackageConfig (PackageConfig(..), name, depends, set, source, readPackageFile, writePackageFile)
+import Language.PureScript.Package.Types.PackageConfig (PackageConfig(..), name, depends, set, source, readPackageFile)
 import Language.PureScript.Package.Types.PackageInfo (PackageInfo(..), repo, version, dependencies)
-import Language.PureScript.Package.Types.PackageName (PackageName, mkPackageName, runPackageName)
+import Language.PureScript.Package.Types.PackageName (PackageName, runPackageName, packageNameFromString)
 import Language.PureScript.Package.Types.PackageSet (PackageSet, readPackageSet, writePackageSet, getTransitiveDeps)
 import Language.PureScript.Package.Initialize (initialize)
-import Language.PureScript.Package.Install (installOrUpdate)
+import Language.PureScript.Package.Install (install)
 import Language.PureScript.Package.Path (pathToTextUnsafe)
 import Language.PureScript.Package.Git (listRemoteTags)
-import Language.PureScript.Package.Update (updateImpl)
+import Language.PureScript.Package.Update (update, updateImpl, installOrUpdate, updateAndWritePackageFile)
 
 echoT :: Text -> IO ()
 echoT = Turtle.printf (Turtle.s % "\n")
-
-update :: IO ()
-update = do
-  pkg <- readPackageFile
-  updateImpl pkg
-  echoT "Update complete"
-
-install :: String -> IO ()
-install pkgName' = do
-  pkg <- readPackageFile
-  pkgName <- packageNameFromString pkgName'
-  let pkg' = pkg { depends = nub (pkgName : depends pkg) }
-  updateAndWritePackageFile pkg'
 
 uninstall :: String -> IO ()
 uninstall pkgName' = do
@@ -57,19 +43,6 @@ uninstall pkgName' = do
   pkgName <- packageNameFromString pkgName'
   let pkg' = pkg { depends = filter (/= pkgName) $ depends pkg }
   updateAndWritePackageFile pkg'
-
-updateAndWritePackageFile :: PackageConfig -> IO ()
-updateAndWritePackageFile pkg = do
-  updateImpl pkg
-  writePackageFile pkg
-  echoT "psc-package.json file was updated"
-
-packageNameFromString :: String -> IO PackageName
-packageNameFromString str =
-  case mkPackageName (pack str) of
-    Right pkgName ->
-      pure pkgName
-    Left _ -> die $ "Invalid package name: " <> pack (show str)
 
 listDependencies :: IO ()
 listDependencies = do
