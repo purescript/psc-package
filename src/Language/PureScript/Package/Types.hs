@@ -4,6 +4,7 @@
 
 module Language.PureScript.Package.Types
   ( PackageConfig(..)
+  , PackageInfo(..)
   , PackageName
   , mkPackageName
   , runPackageName
@@ -26,6 +27,12 @@ data PackageConfig = PackageConfig
   , set     :: Text
   , source  :: Text
   } deriving (Show, Generic, FromJSON, ToJSON)
+
+data PackageInfo = PackageInfo
+  { repo         :: Text
+  , version      :: Text
+  , dependencies :: [PackageName]
+  } deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 newtype PackageName
   = PackageName Text

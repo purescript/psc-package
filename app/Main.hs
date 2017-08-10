@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -27,7 +25,6 @@ import qualified Data.Text.Read as TR
 import           Data.Traversable (for)
 import           Data.Version (Version(..), parseVersion, showVersion)
 import qualified Filesystem.Path.CurrentOS as Path
-import           GHC.Generics (Generic)
 import qualified Options.Applicative as Opts
 import qualified Paths_psc_package as Paths
 import           System.Environment (getArgs)
@@ -37,7 +34,7 @@ import qualified Text.ParserCombinators.ReadP as Read
 import           Turtle hiding (echo, fold, s, x)
 import qualified Turtle
 
-import           Language.PureScript.Package.Types (PackageConfig(..), name, depends, set, source, PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
+import           Language.PureScript.Package.Types (PackageConfig(..), name, depends, set, source, PackageInfo(..), repo, version, dependencies, PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
 
 echoT :: Text -> IO ()
 echoT = Turtle.printf (Turtle.s % "\n")
@@ -88,12 +85,6 @@ writePackageFile :: PackageConfig -> IO ()
 writePackageFile =
   writeTextFile packageFile
   . packageConfigToJSON
-
-data PackageInfo = PackageInfo
-  { repo         :: Text
-  , version      :: Text
-  , dependencies :: [PackageName]
-  } deriving (Show, Eq, Generic, Aeson.FromJSON, Aeson.ToJSON)
 
 type PackageSet = Map.Map PackageName PackageInfo
 
