@@ -37,7 +37,7 @@ import qualified Text.ParserCombinators.ReadP as Read
 import           Turtle hiding (echo, fold, s, x)
 import qualified Turtle
 
-import           Language.PureScript.Package.Types (PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
+import           Language.PureScript.Package.Types (PackageConfig(..), name, depends, set, source, PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
 
 echoT :: Text -> IO ()
 echoT = Turtle.printf (Turtle.s % "\n")
@@ -48,13 +48,6 @@ exitWithErr errText = errT errText >> exit (ExitFailure 1)
 
 packageFile :: Path.FilePath
 packageFile = "psc-package.json"
-
-data PackageConfig = PackageConfig
-  { name    :: PackageName
-  , depends :: [PackageName]
-  , set     :: Text
-  , source  :: Text
-  } deriving (Show, Generic, Aeson.FromJSON, Aeson.ToJSON)
 
 pathToTextUnsafe :: Turtle.FilePath -> Text
 pathToTextUnsafe = either (error "Path.toText failed") id . Path.toText

@@ -1,7 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Language.PureScript.Package.Types
-  ( PackageName
+  ( PackageConfig(..)
+  , PackageName
   , mkPackageName
   , runPackageName
   , preludePackageName
@@ -15,6 +18,14 @@ import           Data.Char (isAscii, isLower, isDigit)
 import           Data.Monoid ((<>))
 import           Data.Text (Text)
 import qualified Data.Text as T
+import           GHC.Generics (Generic)
+
+data PackageConfig = PackageConfig
+  { name    :: PackageName
+  , depends :: [PackageName]
+  , set     :: Text
+  , source  :: Text
+  } deriving (Show, Generic, FromJSON, ToJSON)
 
 newtype PackageName
   = PackageName Text
