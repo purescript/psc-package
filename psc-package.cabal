@@ -16,7 +16,8 @@ cabal-version:       >=1.10
 library
     hs-source-dirs:      src
     ghc-options:         -Wall -fwarn-tabs -fwarn-incomplete-uni-patterns -fwarn-incomplete-record-updates -fwarn-identities
-    exposed-modules:     Language.PureScript.Package.Types
+    exposed-modules:     Language.PureScript.Package.Types,
+                         Language.PureScript.Package.Types.PackageName
     build-depends:       base >= 4.7 && < 5,
                          aeson -any,
                          text
