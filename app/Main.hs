@@ -1,6 +1,5 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 
 module Main where
 
@@ -23,13 +22,14 @@ import qualified System.Process as Process
 import           Turtle hiding (echo, fold, s, x)
 import qualified Turtle
 
-import Language.PureScript.Package.Types.PackageConfig (PackageConfig(..), name, depends, set, source, readPackageFile)
+import Language.PureScript.Package.Types.PackageConfig (PackageConfig(..), depends, readPackageFile)
 import Language.PureScript.Package.Types.PackageInfo (PackageInfo(..), repo, version, dependencies)
 import Language.PureScript.Package.Types.PackageName (PackageName, runPackageName)
-import Language.PureScript.Package.Types.PackageSet (PackageSet, readPackageSet, writePackageSet, getTransitiveDeps)
+import Language.PureScript.Package.Types.PackageSet (readPackageSet, writePackageSet, getTransitiveDeps)
 import Language.PureScript.Package.Initialize (initialize)
 import Language.PureScript.Package.Install (install)
 import Language.PureScript.Package.Path (pathToTextUnsafe)
+import Language.PureScript.Package.Paths (getPaths)
 import Language.PureScript.Package.Git (listRemoteTags)
 import Language.PureScript.Package.Uninstall (uninstall)
 import Language.PureScript.Package.Update (update, updateImpl)
@@ -64,24 +64,6 @@ listPackages sorted = do
                         ]
     vs = G.topSort (G.transposeG gr)
     fromNode (pkg, name, _) = (name, pkg)
-
-getSourcePaths :: PackageConfig -> PackageSet -> [PackageName] -> IO [Turtle.FilePath]
-getSourcePaths PackageConfig{..} db pkgNames = do
-  trans <- getTransitiveDeps db pkgNames
-  let paths = [ ".psc-package"
-                </> fromText set
-                </> fromText (runPackageName pkgName)
-                </> fromText version
-                </> "src" </> "**" </> "*.purs"
-              | (pkgName, PackageInfo{ version }) <- trans
-              ]
-  return paths
-
-getPaths :: IO [Turtle.FilePath]
-getPaths = do
-  pkg@PackageConfig{..} <- readPackageFile
-  db <- readPackageSet pkg
-  getSourcePaths pkg db depends
 
 listSourcePaths :: IO ()
 listSourcePaths = do

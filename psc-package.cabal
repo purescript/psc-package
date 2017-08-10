@@ -24,6 +24,7 @@ library
                          Language.PureScript.Package.Initialize,
                          Language.PureScript.Package.Install,
                          Language.PureScript.Package.Path,
+                         Language.PureScript.Package.Paths,
                          Language.PureScript.Package.Uninstall,
                          Language.PureScript.Package.Update,
                          Language.PureScript.Package.Verify
