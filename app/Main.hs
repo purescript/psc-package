@@ -37,6 +37,9 @@ import qualified Turtle
 import Language.PureScript.Package.Types.PackageConfig (PackageConfig(..), name, depends, set, source, readPackageFile, writePackageFile)
 import Language.PureScript.Package.Types.PackageInfo (PackageInfo(..), repo, version, dependencies)
 import Language.PureScript.Package.Types.PackageName (PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
+import Language.PureScript.Package.Install (installOrUpdate)
+import Language.PureScript.Package.Path (pathToTextUnsafe)
+import Language.PureScript.Package.Git (cloneShallow, listRemoteTags)
 
 echoT :: Text -> IO ()
 echoT = Turtle.printf (Turtle.s % "\n")
@@ -44,9 +47,6 @@ echoT = Turtle.printf (Turtle.s % "\n")
 exitWithErr :: Text -> IO a
 exitWithErr errText = errT errText >> exit (ExitFailure 1)
   where errT = traverse Turtle.err . textToLines
-
-pathToTextUnsafe :: Turtle.FilePath -> Text
-pathToTextUnsafe = either (error "Path.toText failed") id . Path.toText
 
 packageSetToJSON :: PackageSet -> Text
 packageSetToJSON =
@@ -57,37 +57,6 @@ packageSetToJSON =
     config = defConfig { confCompare = compare }
 
 type PackageSet = Map.Map PackageName PackageInfo
-
-cloneShallow
-  :: Text
-  -- ^ repo
-  -> Text
-  -- ^ branch/tag
-  -> Turtle.FilePath
-  -- ^ target directory
-  -> IO ExitCode
-cloneShallow from ref into =
-  proc "git"
-       [ "clone"
-       , "-q"
-       , "-c", "advice.detachedHead=false"
-       , "--depth", "1"
-       , "-b", ref
-       , from
-       , pathToTextUnsafe into
-       ] empty .||. exit (ExitFailure 1)
-
-listRemoteTags
-  :: Text
-  -- ^ repo
-  -> Turtle.Shell Text
-listRemoteTags from = let gitProc = inproc "git"
-                                    [ "ls-remote"
-                                    , "-q"
-                                    , "-t"
-                                    , from
-                                    ] empty
-                      in lineToText <$> gitProc
 
 getPackageSet :: PackageConfig -> IO ()
 getPackageSet PackageConfig{ source, set } = do
@@ -109,15 +78,6 @@ writePackageSet :: PackageConfig -> PackageSet -> IO ()
 writePackageSet PackageConfig{ set } =
   let dbFile = ".psc-package" </> fromText set </> ".set" </> "packages.json"
   in writeTextFile dbFile . packageSetToJSON
-
-installOrUpdate :: Text -> PackageName -> PackageInfo -> IO Turtle.FilePath
-installOrUpdate set pkgName PackageInfo{ repo, version } = do
-  let pkgDir = ".psc-package" </> fromText set </> fromText (runPackageName pkgName) </> fromText version
-  exists <- testdir pkgDir
-  unless exists . void $ do
-    echoT ("Updating " <> runPackageName pkgName)
-    cloneShallow repo version pkgDir
-  pure pkgDir
 
 getTransitiveDeps :: PackageSet -> [PackageName] -> IO [(PackageName, PackageInfo)]
 getTransitiveDeps db deps =
