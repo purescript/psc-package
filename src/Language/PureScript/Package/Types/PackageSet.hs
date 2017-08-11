@@ -37,18 +37,18 @@ packageSetToJSON =
   where
     config = AesonEncode.defConfig { AesonEncode.confCompare = compare }
 
-getPackageSet :: PackageConfig -> IO ()
+getPackageSet :: MonadIO m => PackageConfig -> m ()
 getPackageSet PackageConfig{ source, set } = do
   let pkgDir = ".psc-package" </> fromText set </> ".set"
   exists <- testdir pkgDir
   unless exists . void $ cloneShallow source set pkgDir
 
-readPackageSet :: PackageConfig -> IO PackageSet
+readPackageSet :: MonadIO m => PackageConfig -> m PackageSet
 readPackageSet PackageConfig{ set } = do
   let dbFile = ".psc-package" </> fromText set </> ".set" </> "packages.json"
   exists <- testfile dbFile
   unless exists $ die $ format (fp%" does not exist") dbFile
-  mdb <- Aeson.decodeStrict . encodeUtf8 <$> readTextFile dbFile
+  mdb <- liftIO $ Aeson.decodeStrict . encodeUtf8 <$> readTextFile dbFile
   case mdb of
     Nothing -> die "Unable to parse packages.json"
     Just db -> return db
@@ -58,7 +58,11 @@ writePackageSet PackageConfig{ set } =
   let dbFile = ".psc-package" </> fromText set </> ".set" </> "packages.json"
   in writeTextFile dbFile . packageSetToJSON
 
-getTransitiveDeps :: PackageSet -> [PackageName] -> IO [(PackageName, PackageInfo)]
+getTransitiveDeps
+  :: MonadIO m
+  => PackageSet
+  -> [PackageName]
+  -> m [(PackageName, PackageInfo)]
 getTransitiveDeps db deps =
     Map.toList . fold <$> traverse (go Set.empty) deps
   where

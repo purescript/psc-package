@@ -11,13 +11,14 @@ import           Prelude hiding (FilePath)
 import Language.PureScript.Package.Path (pathToTextUnsafe)
 
 cloneShallow
-  :: Text
+  :: MonadIO m
+  => Text
   -- ^ repo
   -> Text
   -- ^ branch/tag
   -> Turtle.FilePath
   -- ^ target directory
-  -> IO ExitCode
+  -> m ExitCode
 cloneShallow from ref into =
   proc "git"
        [ "clone"

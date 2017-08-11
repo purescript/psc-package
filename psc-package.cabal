@@ -20,6 +20,7 @@ library
                          Language.PureScript.Package.Types.PackageInfo,
                          Language.PureScript.Package.Types.PackageName,
                          Language.PureScript.Package.Types.PackageSet,
+                         Language.PureScript.Package.Echo,
                          Language.PureScript.Package.Git,
                          Language.PureScript.Package.Initialize,
                          Language.PureScript.Package.Install,
@@ -34,8 +35,9 @@ library
                          async -any,
                          containers,
                          foldl -any,
-                         turtle == 1.3.*,
-                         text
+                         text -any,
+                         transformers -any,
+                         turtle == 1.3.*
     default-language:    Haskell2010
 
 executable psc-package

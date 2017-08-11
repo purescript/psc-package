@@ -46,16 +46,14 @@ packageConfigToJSON =
 packageFile :: FilePath
 packageFile = "psc-package.json"
 
-readPackageFile :: IO PackageConfig
+readPackageFile :: MonadIO m => m PackageConfig
 readPackageFile = do
   exists <- testfile packageFile
   unless exists $ die "psc-package.json does not exist. Maybe you need to run psc-package init?"
-  mpkg <- Aeson.decodeStrict . encodeUtf8 <$> readTextFile packageFile
+  mpkg <- liftIO $ Aeson.decodeStrict . encodeUtf8 <$> readTextFile packageFile
   case mpkg of
     Nothing -> die "Unable to parse psc-package.json"
     Just pkg -> return pkg
 
-writePackageFile :: PackageConfig -> IO ()
-writePackageFile =
-  writeTextFile packageFile
-  . packageConfigToJSON
+writePackageFile :: MonadIO m => PackageConfig -> m ()
+writePackageFile = liftIO . writeTextFile packageFile . packageConfigToJSON

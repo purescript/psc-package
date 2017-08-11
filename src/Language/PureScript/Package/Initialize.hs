@@ -10,15 +10,16 @@ import           Data.Ord (comparing)
 import qualified Data.Text as T
 import           Data.Version (Version(..), parseVersion, showVersion)
 import           Text.ParserCombinators.ReadP (readP_to_S)
-import           Turtle
+import           Turtle hiding (echo)
 import           Prelude hiding (FilePath)
 
+import Language.PureScript.Package.Echo (MonadEcho(..), echo)
 import Language.PureScript.Package.Types.PackageConfig (PackageConfig(..), name, depends, set, source, writePackageFile)
 import Language.PureScript.Package.Types.PackageName (untitledPackageName, mkPackageName, preludePackageName)
 import Language.PureScript.Package.Path (pathToTextUnsafe)
 import Language.PureScript.Package.Update (updateImpl)
 
-initialize :: Maybe (Text, Maybe Text) -> IO ()
+initialize :: (MonadIO m, MonadEcho m) => Maybe (Text, Maybe Text) -> m ()
 initialize setAndSource = do
     exists <- testfile "psc-package.json"
     when exists $ die "psc-package.json already exists"
@@ -27,8 +28,8 @@ initialize setAndSource = do
     pkg <- case setAndSource of
       Nothing -> do
         pursVersion <- getPureScriptVersion
-        echo ("Using the default package set for PureScript compiler version " <>
-          unsafeTextToLine (fromString (showVersion pursVersion)))
+        echo $ "Using the default package set for PureScript compiler version " <>
+          fromString (showVersion pursVersion)
         echo "(Use --source / --set to override this behavior)"
         pure PackageConfig { name    = pkgName
                            , depends = [ preludePackageName ]
