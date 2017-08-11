@@ -12,13 +12,13 @@ import Language.PureScript.Package.Types.PackageInfo (PackageInfo(..))
 import Language.PureScript.Package.Types.PackageName (PackageName, runPackageName)
 import Language.PureScript.Package.Types.PackageSet (PackageSet, readPackageSet, getTransitiveDeps)
 
-getPaths :: IO [FilePath]
+getPaths :: MonadIO m => m [FilePath]
 getPaths = do
   pkg@PackageConfig{..} <- readPackageFile
   db <- readPackageSet pkg
   getSourcePaths pkg db depends
   where
-  getSourcePaths :: PackageConfig -> PackageSet -> [PackageName] -> IO [FilePath]
+  getSourcePaths :: MonadIO m => PackageConfig -> PackageSet -> [PackageName] -> m [FilePath]
   getSourcePaths PackageConfig{..} db pkgNames = do
     trans <- getTransitiveDeps db pkgNames
     let paths = [ ".psc-package"

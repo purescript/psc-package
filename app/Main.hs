@@ -203,10 +203,10 @@ main = do
             (Opts.info (pure update)
             (Opts.progDesc "Update dependencies"))
         , Opts.command "uninstall"
-            (Opts.info (uninstall <$> pkg Opts.<**> Opts.helper)
+            (Opts.info (uninstall . T.pack <$> pkg Opts.<**> Opts.helper)
             (Opts.progDesc "Uninstall the named package"))
         , Opts.command "install"
-            (Opts.info (install <$> pkg Opts.<**> Opts.helper)
+            (Opts.info (install . T.pack <$> pkg Opts.<**> Opts.helper)
             (Opts.progDesc "Install the named package"))
         , Opts.command "build"
             (Opts.info (exec ["purs", "compile"]

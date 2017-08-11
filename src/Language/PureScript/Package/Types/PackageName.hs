@@ -3,6 +3,7 @@
 module Language.PureScript.Package.Types.PackageName
   ( PackageName
   , mkPackageName
+  , fromText
   , runPackageName
   , packageNameFromString
   , preludePackageName
