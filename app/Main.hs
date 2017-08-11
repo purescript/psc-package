@@ -62,10 +62,10 @@ readPackageFile :: IO PackageConfig
 readPackageFile = do
   exists <- testfile packageFile
   unless exists $ exitWithErr "psc-package.json does not exist. Maybe you need to run psc-package init?"
-  mpkg <- Aeson.decodeStrict . encodeUtf8 <$> readTextFile packageFile
+  mpkg <- Aeson.eitherDecodeStrict . encodeUtf8 <$> readTextFile packageFile
   case mpkg of
-    Nothing -> exitWithErr "Unable to parse psc-package.json"
-    Just pkg -> return pkg
+    Left errors -> exitWithErr $ "Unable to parse psc-package.json: " <> T.pack errors
+    Right pkg -> return pkg
 
 packageConfigToJSON :: PackageConfig -> Text
 packageConfigToJSON =
@@ -145,10 +145,10 @@ readPackageSet PackageConfig{ set } = do
   let dbFile = ".psc-package" </> fromText set </> ".set" </> "packages.json"
   exists <- testfile dbFile
   unless exists $ exitWithErr $ format (fp%" does not exist") dbFile
-  mdb <- Aeson.decodeStrict . encodeUtf8 <$> readTextFile dbFile
+  mdb <- Aeson.eitherDecodeStrict . encodeUtf8 <$> readTextFile dbFile
   case mdb of
-    Nothing -> exitWithErr "Unable to parse packages.json"
-    Just db -> return db
+    Left errors -> exitWithErr $ "Unable to parse packages.json: " <> T.pack errors
+    Right db -> return db
 
 writePackageSet :: PackageConfig -> PackageSet -> IO ()
 writePackageSet PackageConfig{ set } =
