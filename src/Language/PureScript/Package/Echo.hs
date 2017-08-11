@@ -1,3 +1,7 @@
+-- | Tools for optionally `echo`ing 'Text' to stdout.
+--
+-- Use 'runSilentT' to silence 'echo'ed output in any 'MonadEcho'.
+
 module Language.PureScript.Package.Echo (
   MonadEcho(..)
 , SilentT(..)
@@ -14,7 +18,8 @@ class Applicative m => MonadEcho m where
 instance MonadEcho IO where
   echo = putStrLn
 
-newtype SilentT m a = SilentT { runSilentT :: m a }
+-- | A `MonadEcho` that silences `echo`.
+newtype SilentT m a = SilentT {runSilentT :: m a }
 
 instance Functor m => Functor (SilentT m) where
     fmap f = SilentT . fmap f . runSilentT

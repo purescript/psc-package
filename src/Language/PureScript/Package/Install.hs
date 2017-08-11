@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
+-- | Install a new package and update the package file.
+
 module Language.PureScript.Package.Install (install) where
 
 import Control.Monad.IO.Class (MonadIO)

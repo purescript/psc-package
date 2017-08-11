@@ -1,5 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+-- | Functions for executing git.
+
 module Language.PureScript.Package.Git (
   cloneShallow
 , listRemoteTags

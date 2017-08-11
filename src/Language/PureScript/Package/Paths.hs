@@ -2,6 +2,8 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 
+-- | Get the source paths for a package.
+
 module Language.PureScript.Package.Paths (getPaths) where
 
 import           Turtle

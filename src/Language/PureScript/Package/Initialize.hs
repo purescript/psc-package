@@ -1,6 +1,8 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+-- | Initialize a new package, generating its psc-package.json file.
+
 module Language.PureScript.Package.Initialize (initialize) where
 
 import qualified Control.Foldl as Foldl

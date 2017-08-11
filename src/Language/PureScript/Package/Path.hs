@@ -1,3 +1,5 @@
+-- | Convert 'FilePath's to 'Text'
+
 module Language.PureScript.Package.Path (pathToTextUnsafe) where
 
 import Turtle (FilePath, Text, toText)

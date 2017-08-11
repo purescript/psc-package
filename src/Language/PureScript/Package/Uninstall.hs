@@ -1,5 +1,7 @@
 module Language.PureScript.Package.Uninstall (uninstall) where
 
+-- | Remove a package from the package file.
+
 import Control.Monad.IO.Class (MonadIO)
 import Data.Text (Text)
 

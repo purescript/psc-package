@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
+-- | Update (obtain) dependencies/packages.
+
 module Language.PureScript.Package.Update (
   update
 , updateImpl

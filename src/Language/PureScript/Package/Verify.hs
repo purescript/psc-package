@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
 
+-- | Check that a package set can compile.
+
 module Language.PureScript.Package.Verify (verifyPackageSet) where
 
 import           Data.Foldable (for_)
@@ -30,7 +32,7 @@ verifyPackageSet = do
   paths <- Map.fromList <$> traverse installOrUpdate' (Map.toList db)
 
   for_ (Map.toList db) $ \(name, _) -> do
-    let dirFor pkgName = fromMaybe (error ("verifyPackageSet: no directory for " <> show pkgName)) (Map.lookup pkgName paths)
+    let dirFor pkgName = fromMaybe (error $ "verifyPackageSet: no directory for " <> show pkgName) (Map.lookup pkgName paths)
     echo $ "Verifying package " <> runPackageName name
     dependencies <- map fst <$> getTransitiveDeps db [name]
     let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs")) . dirFor) dependencies
