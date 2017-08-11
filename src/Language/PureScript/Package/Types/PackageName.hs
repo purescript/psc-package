@@ -1,9 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Types
+module Language.PureScript.Package.Types.PackageName
   ( PackageName
   , mkPackageName
+  , fromText
   , runPackageName
+  , packageNameFromString
   , preludePackageName
   , untitledPackageName
   ) where
@@ -15,6 +17,7 @@ import           Data.Char (isAscii, isLower, isDigit)
 import           Data.Monoid ((<>))
 import           Data.Text (Text)
 import qualified Data.Text as T
+import           Turtle (die)
 
 newtype PackageName
   = PackageName Text
@@ -77,6 +80,12 @@ mkPackageName = fmap PackageName . validateAll validators
 
 runPackageName :: PackageName -> Text
 runPackageName (PackageName t) = t
+
+packageNameFromString :: String -> IO PackageName
+packageNameFromString str =
+  case mkPackageName (T.pack str) of
+    Right pkgName -> pure pkgName
+    Left _ -> die $ "Invalid package name: " <> T.pack (show str)
 
 preludePackageName :: PackageName
 preludePackageName = PackageName "prelude"

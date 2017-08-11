@@ -1,5 +1,5 @@
 name:                psc-package
-version:             0.2.0
+version:             0.3.0
 synopsis:            An experimental package manager for PureScript
 description:
 homepage:            https://github.com/purescript/psc-package
@@ -13,11 +13,36 @@ build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
 
+library
+    hs-source-dirs:      src
+    ghc-options:         -Wall -fwarn-tabs -fwarn-incomplete-uni-patterns -fwarn-incomplete-record-updates -fwarn-identities
+    exposed-modules:     Language.PureScript.Package.Types.PackageConfig,
+                         Language.PureScript.Package.Types.PackageInfo,
+                         Language.PureScript.Package.Types.PackageName,
+                         Language.PureScript.Package.Types.PackageSet,
+                         Language.PureScript.Package.Echo,
+                         Language.PureScript.Package.Git,
+                         Language.PureScript.Package.Initialize,
+                         Language.PureScript.Package.Install,
+                         Language.PureScript.Package.Path,
+                         Language.PureScript.Package.Paths,
+                         Language.PureScript.Package.Uninstall,
+                         Language.PureScript.Package.Update,
+                         Language.PureScript.Package.Verify
+    build-depends:       base >= 4.7 && < 5,
+                         aeson -any,
+                         aeson-pretty -any,
+                         async -any,
+                         containers,
+                         foldl -any,
+                         text -any,
+                         transformers -any,
+                         turtle == 1.3.*
+    default-language:    Haskell2010
+
 executable psc-package
-    build-depends: base >=4 && <5,
-                   aeson -any,
-                   aeson-pretty -any,
-                   async -any,
+    build-depends: psc-package,
+                   base >=4 && <5,
                    bytestring -any,
                    containers -any,
                    foldl -any,
@@ -28,8 +53,7 @@ executable psc-package
                    turtle ==1.3.*
     main-is: Main.hs
     other-modules: Paths_psc_package
-                   Types
     buildable: True
     hs-source-dirs: app
-    ghc-options: -Wall -O2 -threaded -rtsopts -with-rtsopts=-N
+    ghc-options: -Wall -fwarn-tabs -fwarn-incomplete-uni-patterns -fwarn-incomplete-record-updates -O2 -threaded -rtsopts -with-rtsopts=-N
     default-language:    Haskell2010
