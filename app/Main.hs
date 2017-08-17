@@ -48,7 +48,7 @@ data PackageConfig = PackageConfig
   { name    :: PackageName
   , depends :: [PackageName]
   , set     :: Text
-  , source  :: Text
+  , source  :: Repo
   } deriving (Show, Generic, Aeson.FromJSON, Aeson.ToJSON)
 
 pathToTextUnsafe :: Turtle.FilePath -> Text
@@ -96,63 +96,104 @@ writePackageFile =
   . packageConfigToJSON
 
 data PackageInfo = PackageInfo
-  { repo         :: Text
+  { repo         :: Repo
   , version      :: Text
   , dependencies :: [PackageName]
   } deriving (Show, Eq, Generic, Aeson.FromJSON, Aeson.ToJSON)
 
 type PackageSet = Map.Map PackageName PackageInfo
 
-cloneShallow
-  :: Text
-  -- ^ repo
+newtype Repo = Repo { unRepo :: Text } deriving (Show, Eq)
+
+instance Aeson.FromJSON Repo where
+  parseJSON = fmap Repo . Aeson.parseJSON
+
+
+instance Aeson.ToJSON Repo where
+  toJSON = Aeson.toJSON . unRepo
+
+
+data CloneTarget = CloneTag Text
+                 | CloneSHA Text
+                 deriving (Show)
+
+toCloneTarget
+  :: Repo
   -> Text
-  -- ^ branch/tag/SHA
+  -> IO CloneTarget
+toCloneTarget (Repo from) raw = do
+  remoteLines <- Turtle.fold (lineToText <$> gitProc) Foldl.list
+  let refs = Set.fromList (mapMaybe parseRef remoteLines)
+  if Set.member rawAsBranch refs
+     then do
+       echoT (raw <> " is a branch. psc-package only supports tags and SHAs.")
+       exit (ExitFailure 1)
+     else if Set.member rawAsTag refs
+             then return (CloneTag raw)
+             else return (CloneSHA raw)
+  where
+  rawAsBranch = "refs/heads/" <> raw
+  rawAsTag = "refs/tags/" <> raw
+  gitProc = inproc "git" ["ls-remote", "-q", "--refs", from] empty
+  parseRef line = case T.splitOn "\t" line of
+    [_, ref] | "refs/" `T.isPrefixOf` ref -> Just ref
+    _ -> Nothing
+
+-- Both tags and SHAs can be treated as immutable so we only have to run this once
+cloneShallow
+  :: Repo
+  -- ^ repo
+  -> CloneTarget
+  -- ^ tag/SHA
   -> Turtle.FilePath
   -- ^ target directory
   -> IO ()
-cloneShallow from ref into = do
-  gitExists <- testdir (into </> ".git")
-  unless gitExists $ void $ do
-    proc "git"
-         [ "clone"
-         , "-q"
-         , "-c", "advice.detachedHead=false"
-         , "-c", "remote.origin.fetch=+refs/heads/*:refs/remotes/origin/*"
-         , "--depth", "1"
-         , from
-         , pathToTextUnsafe into
-         ] empty .||. exit (ExitFailure 1)
-  inGitRepo $ proc "git"
-                   [ "fetch"
-                   , "-q"
-                   , "--tags"
-                   ] empty .||. exit (ExitFailure 1)
-  inGitRepo $ proc "git"
-                   [ "reset"
-                   , "-q"
-                   , "--hard"
-                   , ref
-                   ] empty .||. exit (ExitFailure 1)
+cloneShallow (Repo from) (CloneTag tag) into =
+   void $ proc "git"
+                [ "clone"
+                , "-q"
+                , "-c", "advice.detachedHead=false"
+                , "--no-checkout"
+                , "-b", tag
+                , from
+                , pathToTextUnsafe into
+                ] empty .||. exit (ExitFailure 1)
+cloneShallow (Repo from) (CloneSHA sha) into = do
+  void $ proc "git"
+              [ "clone"
+              , "-q"
+              , "-c", "advice.detachedHead=false"
+              , "--no-checkout"
+              , from
+              , pathToTextUnsafe into
+              ] empty .||. exit (ExitFailure 1)
+  inGitRepo $ void $ proc "git"
+                          [ "checkout"
+                          , "-q"
+                          , "-c", "advice.detachedHead=false"
+                          , "--no-checkout"
+                          , sha
+                          ] empty .||. exit (ExitFailure 1)
   where
   inGitRepo m = (sh (pushd into >> m))
 
 listRemoteTags
-  :: Text
+  :: Repo
   -- ^ repo
   -> Turtle.Shell Text
-listRemoteTags from = let gitProc = inproc "git"
-                                    [ "ls-remote"
-                                    , "-q"
-                                    , "-t"
-                                    , from
-                                    ] empty
-                      in lineToText <$> gitProc
+listRemoteTags (Repo from) = let gitProc = inproc "git"
+                                         [ "ls-remote"
+                                         , "-q"
+                                         , "-t"
+                                         , from
+                                         ] empty
+                           in lineToText <$> gitProc
 
 getPackageSet :: PackageConfig -> IO ()
 getPackageSet PackageConfig{ source, set } = do
   let pkgDir = ".psc-package" </> fromText set </> ".set"
-  void $ cloneShallow source set pkgDir
+  exists <- testdir pkgDir
+  unless exists . void $ cloneShallow source (CloneTag set) pkgDir
 
 readPackageSet :: PackageConfig -> IO PackageSet
 readPackageSet PackageConfig{ set } = do
@@ -177,7 +218,9 @@ installOrUpdate :: Text -> PackageName -> PackageInfo -> IO Turtle.FilePath
 installOrUpdate set pkgName PackageInfo{ repo, version } = do
   let pkgDir = ".psc-package" </> fromText set </> fromText (runPackageName pkgName) </> fromText version
   echoT ("Updating " <> runPackageName pkgName)
-  cloneShallow repo version pkgDir
+  target <- toCloneTarget repo version
+  exists <- testdir pkgDir
+  unless exists . void $ cloneShallow repo target pkgDir
   pure pkgDir
 
 getTransitiveDeps :: PackageSet -> [PackageName] -> IO [(PackageName, PackageInfo)]
@@ -217,7 +260,7 @@ getPureScriptVersion = do
            echoT "Unable to parse output of purs --version" >> exit (ExitFailure 1)
     _ -> echoT "Unexpected output from purs --version" >> exit (ExitFailure 1)
 
-initialize :: Maybe (Text, Maybe Text) -> IO ()
+initialize :: Maybe (Text, Maybe Repo) -> IO ()
 initialize setAndSource = do
     exists <- testfile "psc-package.json"
     when exists $ do
@@ -233,13 +276,13 @@ initialize setAndSource = do
         echoT "(Use --source / --set to override this behavior)"
         pure PackageConfig { name    = pkgName
                            , depends = [ preludePackageName ]
-                           , source  = "https://github.com/purescript/package-sets.git"
+                           , source  = Repo "https://github.com/purescript/package-sets.git"
                            , set     = ("psc-" <> pack (showVersion pursVersion))
                            }
       Just (set, source) ->
         pure PackageConfig { name    = pkgName
                            , depends = [ preludePackageName ]
-                           , source  = fromMaybe "https://github.com/purescript/package-sets.git" source
+                           , source  = fromMaybe (Repo "https://github.com/purescript/package-sets.git") source
                            , set
                            }
 
@@ -293,7 +336,7 @@ listPackages sorted = do
   where
   fmt :: (PackageName, PackageInfo) -> Text
   fmt (name, PackageInfo{ version, repo }) =
-    runPackageName name <> " (" <> version <> ", " <> repo <> ")"
+    runPackageName name <> " (" <> version <> ", " <> unRepo repo <> ")"
 
   inOrder xs = fromNode . fromVertex <$> vs where
     (gr, fromVertex) =
@@ -471,7 +514,7 @@ main = do
     commands = (Opts.subparser . fold)
         [ Opts.command "init"
             (Opts.info (initialize <$> optional ((,) <$> (fromString <$> set)
-                                                     <*> optional (fromString <$> source))
+                                                     <*> optional (Repo . fromString <$> source))
                                    Opts.<**> Opts.helper)
             (Opts.progDesc "Initialize a new package"))
         , Opts.command "uninstall"
