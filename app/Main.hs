@@ -41,6 +41,10 @@ import           Types (PackageName, mkPackageName, runPackageName, untitledPack
 echoT :: Text -> IO ()
 echoT = Turtle.printf (Turtle.s % "\n")
 
+exitWithErr :: Text -> IO a
+exitWithErr errText = errT errText >> exit (ExitFailure 1)
+  where errT = traverse Turtle.err . textToLines
+
 packageFile :: Path.FilePath
 packageFile = "psc-package.json"
 
@@ -57,15 +61,11 @@ pathToTextUnsafe = either (error "Path.toText failed") id . Path.toText
 readPackageFile :: IO PackageConfig
 readPackageFile = do
   exists <- testfile packageFile
-  unless exists $ do
-    echoT "psc-package.json does not exist. Maybe you need to run psc-package init?"
-    exit (ExitFailure 1)
-  mpkg <- Aeson.decodeStrict . encodeUtf8 <$> readTextFile packageFile
+  unless exists $ exitWithErr "psc-package.json does not exist. Maybe you need to run psc-package init?"
+  mpkg <- Aeson.eitherDecodeStrict . encodeUtf8 <$> readTextFile packageFile
   case mpkg of
-    Nothing -> do
-      echoT "Unable to parse psc-package.json"
-      exit (ExitFailure 1)
-    Just pkg -> return pkg
+    Left errors -> exitWithErr $ "Unable to parse psc-package.json: " <> T.pack errors
+    Right pkg -> return pkg
 
 packageConfigToJSON :: PackageConfig -> Text
 packageConfigToJSON =
@@ -199,15 +199,11 @@ readPackageSet :: PackageConfig -> IO PackageSet
 readPackageSet PackageConfig{ set } = do
   let dbFile = ".psc-package" </> fromText set </> ".set" </> "packages.json"
   exists <- testfile dbFile
-  unless exists $ do
-    echoT $ format (fp%" does not exist") dbFile
-    exit (ExitFailure 1)
-  mdb <- Aeson.decodeStrict . encodeUtf8 <$> readTextFile dbFile
+  unless exists $ exitWithErr $ format (fp%" does not exist") dbFile
+  mdb <- Aeson.eitherDecodeStrict . encodeUtf8 <$> readTextFile dbFile
   case mdb of
-    Nothing -> do
-      echoT "Unable to parse packages.json"
-      exit (ExitFailure 1)
-    Just db -> return db
+    Left errors -> exitWithErr $ "Unable to parse packages.json: " <> T.pack errors
+    Right db -> return db
 
 writePackageSet :: PackageConfig -> PackageSet -> IO ()
 writePackageSet PackageConfig{ set } =
@@ -228,14 +224,12 @@ getTransitiveDeps db deps =
     Map.toList . fold <$> traverse (go Set.empty) deps
   where
     go seen pkg
-      | pkg `Set.member` seen = do
-          echoT ("Cycle in package dependencies at package " <> runPackageName pkg)
-          exit (ExitFailure 1)
+      | pkg `Set.member` seen =
+          exitWithErr ("Cycle in package dependencies at package " <> runPackageName pkg)
       | otherwise =
         case Map.lookup pkg db of
-          Nothing -> do
-            echoT ("Package " <> runPackageName pkg <> " does not exist in package set")
-            exit (ExitFailure 1)
+          Nothing ->
+            exitWithErr ("Package " <> runPackageName pkg <> " does not exist in package set")
           Just info@PackageInfo{ dependencies } -> do
             m <- fold <$> traverse (go (Set.insert pkg seen)) dependencies
             return (Map.insert pkg info m)
@@ -246,7 +240,7 @@ updateImpl config@PackageConfig{ depends } = do
   db <- readPackageSet config
   trans <- getTransitiveDeps db depends
   echoT ("Updating " <> pack (show (length trans)) <> " packages...")
-  forConcurrently_ trans $ \(pkgName, pkg) -> installOrUpdate (set config) pkgName pkg
+  forConcurrently_ trans . uncurry $ installOrUpdate (set config)
 
 getPureScriptVersion :: IO Version
 getPureScriptVersion = do
@@ -256,16 +250,13 @@ getPureScriptVersion = do
     [onlyLine]
       | results@(_ : _) <- Read.readP_to_S parseVersion (T.unpack onlyLine) ->
            pure (fst (maximumBy (comparing (length . versionBranch . fst)) results))
-      | otherwise ->
-           echoT "Unable to parse output of purs --version" >> exit (ExitFailure 1)
-    _ -> echoT "Unexpected output from purs --version" >> exit (ExitFailure 1)
+      | otherwise -> exitWithErr "Unable to parse output of purs --version"
+    _ -> exitWithErr "Unexpected output from purs --version"
 
 initialize :: Maybe (Text, Maybe Repo) -> IO ()
 initialize setAndSource = do
     exists <- testfile "psc-package.json"
-    when exists $ do
-      echoT "psc-package.json already exists"
-      exit (ExitFailure 1)
+    when exists $ exitWithErr "psc-package.json already exists"
     echoT "Initializing new project in current directory"
     pkgName <- packageNameFromPWD . pathToTextUnsafe . Path.filename <$> pwd
     pkg <- case setAndSource of
@@ -277,7 +268,7 @@ initialize setAndSource = do
         pure PackageConfig { name    = pkgName
                            , depends = [ preludePackageName ]
                            , source  = Repo "https://github.com/purescript/package-sets.git"
-                           , set     = ("psc-" <> pack (showVersion pursVersion))
+                           , set     = "psc-" <> pack (showVersion pursVersion)
                            }
       Just (set, source) ->
         pure PackageConfig { name    = pkgName
@@ -292,22 +283,30 @@ initialize setAndSource = do
     packageNameFromPWD =
       either (const untitledPackageName) id . mkPackageName
 
+update :: IO ()
+update = do
+  pkg <- readPackageFile
+  updateImpl pkg
+  echoT "Update complete"
+
 install :: String -> IO ()
 install pkgName' = do
   pkg <- readPackageFile
   pkgName <- packageNameFromString pkgName'
   let pkg' = pkg { depends = nub (pkgName : depends pkg) }
-  updateImpl pkg'
-  writePackageFile pkg'
-  echoT "psc-package.json file was updated"
+  updateAndWritePackageFile pkg'
 
 uninstall :: String -> IO ()
 uninstall pkgName' = do
   pkg <- readPackageFile
   pkgName <- packageNameFromString pkgName'
   let pkg' = pkg { depends = filter (/= pkgName) $ depends pkg }
-  updateImpl pkg'
-  writePackageFile pkg'
+  updateAndWritePackageFile pkg'
+
+updateAndWritePackageFile :: PackageConfig -> IO ()
+updateAndWritePackageFile pkg = do
+  updateImpl pkg
+  writePackageFile pkg
   echoT "psc-package.json file was updated"
 
 packageNameFromString :: String -> IO PackageName
@@ -315,9 +314,7 @@ packageNameFromString str =
   case mkPackageName (pack str) of
     Right pkgName ->
       pure pkgName
-    Left _ -> do
-      echoT ("Invalid package name: " <> pack (show str))
-      exit (ExitFailure 1)
+    Left _ -> exitWithErr $ "Invalid package name: " <> pack (show str)
 
 listDependencies :: IO ()
 listDependencies = do
@@ -400,7 +397,7 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
     echoT ("Checking " <> pack (show (Map.size db)) <> " packages for updates.")
     echoT "Warning: this could take some time!"
 
-    newDb <- Map.fromList <$> (for (Map.toList db) $ \(name, p@PackageInfo{ repo, version }) -> do
+    newDb <- Map.fromList <$> for (Map.toList db) (\(name, p@PackageInfo{ repo, version }) -> do
       echoT ("Checking package " <> runPackageName name)
       tagLines <- Turtle.fold (listRemoteTags repo) Foldl.list
       let tags = mapMaybe parseTag tagLines
@@ -410,22 +407,22 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
                 case filter (isMinorReleaseFrom parts) tags of
                   [] -> pure version
                   minorReleases -> do
-                    echoT ("New minor release available")
-                    case applyMinorUpdates of
-                      True -> do
+                    echoT "New minor release available"
+                    if applyMinorUpdates
+                      then do
                         let latestMinorRelease = maximum minorReleases
                         pure ("v" <> T.intercalate "." (map (pack . show) latestMinorRelease))
-                      False -> pure version
+                      else pure version
               applyMajor =
                 case filter (isMajorReleaseFrom parts) tags of
                   [] -> applyMinor
                   newReleases -> do
-                    echoT ("New major release available")
-                    case applyMajorUpdates of
-                      True -> do
+                    echoT "New major release available"
+                    if applyMajorUpdates
+                      then do
                         let latestRelease = maximum newReleases
                         pure ("v" <> T.intercalate "." (map (pack . show) latestRelease))
-                      False -> applyMinor
+                      else applyMinor
           in applyMajor
         _ -> do
           echoT "Unable to parse version string"
@@ -492,8 +489,7 @@ main :: IO ()
 main = do
     IO.hSetEncoding IO.stdout IO.utf8
     IO.hSetEncoding IO.stderr IO.utf8
-    cmd <- Opts.handleParseResult . execParserPure opts =<< getArgs
-    cmd
+    join $ Opts.handleParseResult . execParserPure opts =<< getArgs
   where
     opts        = Opts.info (versionInfo <*> Opts.helper <*> commands) infoModList
     infoModList = Opts.fullDesc <> headerInfo <> footerInfo
@@ -517,6 +513,9 @@ main = do
                                                      <*> optional (Repo . fromString <$> source))
                                    Opts.<**> Opts.helper)
             (Opts.progDesc "Initialize a new package"))
+        , Opts.command "update"
+            (Opts.info (pure update)
+            (Opts.progDesc "Update dependencies"))
         , Opts.command "uninstall"
             (Opts.info (uninstall <$> pkg Opts.<**> Opts.helper)
             (Opts.progDesc "Uninstall the named package"))

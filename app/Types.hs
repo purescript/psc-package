@@ -26,7 +26,7 @@ instance ToJSON PackageName where
 instance FromJSON PackageName where
   parseJSON =
     withText "package name" fromText
-    
+
 fromText :: Monad m => Text -> m PackageName
 fromText t =
   case mkPackageName t of
@@ -46,7 +46,7 @@ instance FromJSONKey PackageName where
 data PackageNameError
   = NotEmpty
   | TooLong Int
-  | InvalidChars [Char]
+  | InvalidChars String
   | RepeatedSeparators
   | MustNotBeginSeparator
   | MustNotEndSeparator
