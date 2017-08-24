@@ -132,12 +132,12 @@ toCloneTarget (Repo from) raw = do
              then return (CloneTag raw)
              else return (CloneSHA raw)
   where
-  rawAsBranch = "refs/heads/" <> raw
-  rawAsTag = "refs/tags/" <> raw
-  gitProc = inproc "git" ["ls-remote", "-q", "--refs", from] empty
-  parseRef line = case T.splitOn "\t" line of
-    [_, ref] | "refs/" `T.isPrefixOf` ref -> Just ref
-    _ -> Nothing
+    rawAsBranch = "refs/heads/" <> raw
+    rawAsTag = "refs/tags/" <> raw
+    gitProc = inproc "git" ["ls-remote", "-q", "--refs", from] empty
+    parseRef line = case T.splitOn "\t" line of
+      [_, ref] | "refs/" `T.isPrefixOf` ref -> Just ref
+      _ -> Nothing
 
 -- Both tags and SHAs can be treated as immutable so we only have to run this once
 cloneShallow
@@ -175,7 +175,7 @@ cloneShallow (Repo from) (CloneSHA sha) into = do
                           , sha
                           ] empty .||. exit (ExitFailure 1)
   where
-  inGitRepo m = (sh (pushd into >> m))
+    inGitRepo m = sh (pushd into >> m)
 
 listRemoteTags
   :: Repo
@@ -331,17 +331,17 @@ listPackages sorted = do
     then traverse_ echoT (fmt <$> inOrder (Map.assocs db))
     else traverse_ echoT (fmt <$> Map.assocs db)
   where
-  fmt :: (PackageName, PackageInfo) -> Text
-  fmt (name, PackageInfo{ version, repo }) =
-    runPackageName name <> " (" <> version <> ", " <> unRepo repo <> ")"
+    fmt :: (PackageName, PackageInfo) -> Text
+    fmt (name, PackageInfo{ version, repo }) =
+      runPackageName name <> " (" <> version <> ", " <> unRepo repo <> ")"
 
-  inOrder xs = fromNode . fromVertex <$> vs where
-    (gr, fromVertex) =
-      G.graphFromEdges' [ (pkg, name, dependencies pkg)
-                        | (name, pkg) <- xs
-                        ]
-    vs = G.topSort (G.transposeG gr)
-    fromNode (pkg, name, _) = (name, pkg)
+    inOrder xs = fromNode . fromVertex <$> vs where
+      (gr, fromVertex) =
+        G.graphFromEdges' [ (pkg, name, dependencies pkg)
+                          | (name, pkg) <- xs
+                          ]
+      vs = G.topSort (G.transposeG gr)
+      fromNode (pkg, name, _) = (name, pkg)
 
 getSourcePaths :: PackageConfig -> PackageSet -> [PackageName] -> IO [Turtle.FilePath]
 getSourcePaths PackageConfig{..} db pkgNames = do
