@@ -134,7 +134,14 @@ toCloneTarget (Repo from) raw = do
   where
     rawAsBranch = "refs/heads/" <> raw
     rawAsTag = "refs/tags/" <> raw
-    gitProc = inproc "git" ["ls-remote", "-q", "--refs", from] empty
+    gitProc = inproc "git"
+      ["ls-remote"
+      , "-q"
+      , "--refs"
+      , "--heads"
+      , "--tags"
+      , from
+      ] empty
     parseRef line = case T.splitOn "\t" line of
       [_, ref] | "refs/" `T.isPrefixOf` ref -> Just ref
       _ -> Nothing
