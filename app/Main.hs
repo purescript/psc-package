@@ -148,34 +148,31 @@ cloneShallow
   -> Turtle.FilePath
   -- ^ target directory
   -> IO ()
-cloneShallow (Repo from) (CloneTag tag) into =
-   void $ proc "git"
-                [ "clone"
-                , "-q"
-                , "-c", "advice.detachedHead=false"
-                , "--no-checkout"
-                , "-b", tag
-                , from
-                , pathToTextUnsafe into
-                ] empty .||. exit (ExitFailure 1)
-cloneShallow (Repo from) (CloneSHA sha) into = do
+cloneShallow (Repo from) tgt into = do
   void $ proc "git"
-              [ "clone"
-              , "-q"
-              , "-c", "advice.detachedHead=false"
-              , "--no-checkout"
-              , from
-              , pathToTextUnsafe into
-              ] empty .||. exit (ExitFailure 1)
-  inGitRepo $ void $ proc "git"
-                          [ "checkout"
-                          , "-q"
-                          , "-c", "advice.detachedHead=false"
-                          , "--no-checkout"
-                          , sha
-                          ] empty .||. exit (ExitFailure 1)
+               [ "clone"
+               , "-q"
+               , "-c", "advice.detachedHead=false"
+               , "--no-checkout"
+               , "-b", tgtText
+               , from
+               , pathToTextUnsafe into
+               ] empty .||. exit (ExitFailure 1)
+  case tgt of
+    CloneSHA sha ->
+      inGitRepo $ void $ proc "git"
+                             [ "checkout"
+                             , "-q"
+                             , "-c", "advice.detachedHead=false"
+                             , "--no-checkout"
+                             , sha
+                             ] empty .||. exit (ExitFailure 1)
+    CloneTag _ -> return ()
   where
     inGitRepo m = sh (pushd into >> m)
+    tgtText = case tgt of
+      CloneTag t -> t
+      CloneSHA t -> t
 
 listRemoteTags
   :: Repo
