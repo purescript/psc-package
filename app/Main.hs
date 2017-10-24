@@ -506,6 +506,12 @@ main = do
                         <*> passthroughArgs "purs compile"
                         Opts.<**> Opts.helper)
             (Opts.progDesc "Build the current package and dependencies"))
+        , Opts.command "docs"
+            (Opts.info (exec ["purs", "docs"]
+                        <$> onlyDeps "Generate docs for only the package's dependencies"
+                        <*> passthroughArgs "purs docs"
+                        Opts.<**> Opts.helper)
+            (Opts.progDesc "Generate docs for the current package and dependencies"))
         , Opts.command "repl"
             (Opts.info (exec ["purs", "repl"]
                         <$> onlyDeps "Load only the package's dependencies"
