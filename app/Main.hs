@@ -490,10 +490,10 @@ main = do
             (Opts.info (initialize <$> optional ((,) <$> (fromString <$> set)
                                                      <*> optional (fromString <$> source))
                                    Opts.<**> Opts.helper)
-            (Opts.progDesc "Initialize a new package"))
+            (Opts.progDesc "Create a new psc-package.json file"))
         , Opts.command "update"
             (Opts.info (pure update)
-            (Opts.progDesc "Update dependencies"))
+            (Opts.progDesc "Install or update package dependencies"))
         , Opts.command "uninstall"
             (Opts.info (uninstall <$> pkg Opts.<**> Opts.helper)
             (Opts.progDesc "Uninstall the named package"))
@@ -505,7 +505,7 @@ main = do
                         <$> onlyDeps "Compile only the package's dependencies"
                         <*> passthroughArgs "purs compile"
                         Opts.<**> Opts.helper)
-            (Opts.progDesc "Build the current package and dependencies"))
+            (Opts.progDesc "Update dependencies and compile the current package"))
         , Opts.command "repl"
             (Opts.info (exec ["purs", "repl"]
                         <$> onlyDeps "Load only the package's dependencies"
@@ -525,7 +525,7 @@ main = do
             (Opts.info (checkForUpdates <$> apply <*> applyMajor Opts.<**> Opts.helper)
             (Opts.progDesc "Check all packages in the package set for new releases"))
         , Opts.command "verify-set"
-            (Opts.info (pure $ verifyPackageSet)
+            (Opts.info (pure verifyPackageSet)
             (Opts.progDesc "Verify that the packages in the package set build correctly"))
         , Opts.command "verify"
             (Opts.info (verify <$> pkg Opts.<**> Opts.helper)

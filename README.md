@@ -7,7 +7,20 @@
 ## Installation
 
 - Download the binary for your platform from [the releases page](https://github.com/purescript/psc-package/releases), and copy it somewhere on your PATH, or
-- Build from source, using `stack install`. 
+- Build from source, using `stack install`.
+
+## Usage
+
+```shell
+# install or update the dependencies listed in psc-package.json
+$ psc-package update
+
+# install the package and add it to psc-package.json
+$ psc-package install <package>
+
+# list available commands
+$ psc-package --help
+```
 
 ## Design Goals
 
