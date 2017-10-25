@@ -246,12 +246,17 @@ update = do
   updateImpl pkg
   echoT "Update complete"
 
-install :: String -> IO ()
+install :: Maybe String -> IO ()
 install pkgName' = do
   pkg <- readPackageFile
-  pkgName <- packageNameFromString pkgName'
-  let pkg' = pkg { depends = nub (pkgName : depends pkg) }
-  updateAndWritePackageFile pkg'
+  case pkgName' of
+    Nothing -> do
+      updateImpl pkg
+      echoT "Install complete"
+    Just str -> do
+      pkgName <- packageNameFromString str
+      let pkg' = pkg { depends = nub (pkgName : depends pkg) }
+      updateAndWritePackageFile pkg'
 
 uninstall :: String -> IO ()
 uninstall pkgName' = do
@@ -498,8 +503,8 @@ main = do
             (Opts.info (uninstall <$> pkg Opts.<**> Opts.helper)
             (Opts.progDesc "Uninstall the named package"))
         , Opts.command "install"
-            (Opts.info (install <$> pkg Opts.<**> Opts.helper)
-            (Opts.progDesc "Install the named package"))
+            (Opts.info (install <$> optional pkg Opts.<**> Opts.helper)
+            (Opts.progDesc "Install the named package, if specified. Otherwise, install all package dependencies"))
         , Opts.command "build"
             (Opts.info (exec ["purs", "compile"]
                         <$> onlyDeps "Compile only the package's dependencies"
