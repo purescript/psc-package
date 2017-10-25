@@ -12,11 +12,14 @@
 ## Usage
 
 ```shell
-# install or update the dependencies listed in psc-package.json
-$ psc-package update
+# install the dependencies listed in psc-package.json
+$ psc-package install
 
 # install the package and add it to psc-package.json
 $ psc-package install <package>
+
+# update the dependencies listed in psc-package.json
+$ psc-package update
 
 # list available commands
 $ psc-package --help
