@@ -199,9 +199,28 @@ updateImpl config@PackageConfig{ depends } = do
   echoT ("Updating " <> pack (show (length trans)) <> " packages...")
   forConcurrently_ trans . uncurry $ installOrUpdate (set config)
 
+pursCmd :: IO Text
+pursCmd = do
+  purs <- which "purs"
+  cmd <- which "purs.cmd"
+  exe <- which "purs.exe"
+  return $ fromMaybe "purs" $ msum [ constCmd "purs" purs
+                                   , findExe cmd
+                                   , constCmd "purs" exe
+                                   ]
+    where
+      constCmd :: Text -> Maybe Turtle.FilePath -> Maybe Text
+      constCmd t = fmap (const t)
+      appendExeText :: Turtle.FilePath -> Text
+      appendExeText p =
+        either id id (toText (p </> "node_modules" </> "purescript" </> "vendor" </> "purs.exe"))
+      findExe :: Maybe Turtle.FilePath -> Maybe Text
+      findExe = fmap (appendExeText . parent)
+
 getPureScriptVersion :: IO Version
 getPureScriptVersion = do
-  let pursProc = inproc "purs" [ "--version" ] empty
+  purs <- pursCmd
+  let pursProc = inproc purs [ "--version" ] empty
   outputLines <- Turtle.fold (fmap lineToText pursProc) Foldl.list
   case outputLines of
     [onlyLine]
@@ -327,17 +346,17 @@ listSourcePaths = do
 --
 -- Extra args will be appended to the options
 exec :: [String] -> Bool -> [String] -> IO ()
-exec execNames onlyDeps passthroughOptions = do
+exec cmdParts onlyDeps passthroughOptions = do
   pkg <- readPackageFile
   updateImpl pkg
 
+  purs <- T.unpack <$> pursCmd
   paths <- getPaths
-  let cmdParts = tail execNames
-      srcParts = [ "src" </> "**" </> "*.purs" | not onlyDeps ]
+  let srcParts = [ "src" </> "**" </> "*.purs" | not onlyDeps ]
   exit
     =<< Process.waitForProcess
     =<< Process.runProcess
-          (head execNames)
+          purs
           (cmdParts <> passthroughOptions
                     <> map Path.encodeString (srcParts <> paths))
           Nothing -- no special path to the working dir
@@ -431,7 +450,7 @@ verify inputName = case mkPackageName (pack inputName) of
     pkg <- readPackageFile
     db <- readPackageSet pkg
     case name `Map.lookup` db of
-      Nothing -> echoT . pack $ "No packages found with the name " <> show (runPackageName $ name)
+      Nothing -> echoT . pack $ "No packages found with the name " <> show (runPackageName name)
       Just _ -> do
         reverseDeps <- map fst <$> getReverseDeps db name
         let packages = pure name <> reverseDeps
@@ -461,7 +480,8 @@ verifyPackage db paths name = do
   echoT ("Verifying package " <> runPackageName name)
   dependencies <- map fst <$> getTransitiveDeps db [name]
   let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs")) . dirFor) dependencies
-  procs "purs" ("compile" : srcGlobs) empty
+  purs <- pursCmd
+  procs purs ("compile" : srcGlobs) empty
 
 main :: IO ()
 main = do
@@ -501,13 +521,13 @@ main = do
             (Opts.info (install <$> pkg Opts.<**> Opts.helper)
             (Opts.progDesc "Install the named package"))
         , Opts.command "build"
-            (Opts.info (exec ["purs", "compile"]
+            (Opts.info (exec ["compile"]
                         <$> onlyDeps "Compile only the package's dependencies"
                         <*> passthroughArgs "purs compile"
                         Opts.<**> Opts.helper)
             (Opts.progDesc "Update dependencies and compile the current package"))
         , Opts.command "repl"
-            (Opts.info (exec ["purs", "repl"]
+            (Opts.info (exec ["repl"]
                         <$> onlyDeps "Load only the package's dependencies"
                         <*> passthroughArgs "purs repl"
                         Opts.<**> Opts.helper)
