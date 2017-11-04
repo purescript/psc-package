@@ -204,23 +204,21 @@ pursCmd = do
   purs <- which "purs"
   cmd <- which "purs.cmd"
   exe <- which "purs.exe"
-  return $ fromMaybe "purs" $ msum [ constCmd "purs" purs
-                                   , findExe cmd
-                                   , constCmd "purs" exe
-                                   ]
+  let mpurs = msum [ constCmd "purs" purs
+                   , constCmd "purs" exe
+                   , constCmd "purs.cmd" cmd
+                   ]
+  case mpurs of
+    Nothing -> exitWithErr "The \"purs\" executable could not be found. Please make sure your PATH variable is set correctly"
+    Just c -> return c
     where
       constCmd :: Text -> Maybe Turtle.FilePath -> Maybe Text
       constCmd t = fmap (const t)
-      appendExeText :: Turtle.FilePath -> Text
-      appendExeText p =
-        either id id (toText (p </> "node_modules" </> "purescript" </> "vendor" </> "purs.exe"))
-      findExe :: Maybe Turtle.FilePath -> Maybe Text
-      findExe = fmap (appendExeText . parent)
 
 getPureScriptVersion :: IO Version
 getPureScriptVersion = do
   purs <- pursCmd
-  let pursProc = inproc purs [ "--version" ] empty
+  let pursProc = cmdProc purs
   outputLines <- Turtle.fold (fmap lineToText pursProc) Foldl.list
   case outputLines of
     [onlyLine]
@@ -228,6 +226,9 @@ getPureScriptVersion = do
            pure (fst (maximumBy (comparing (length . versionBranch . fst)) results))
       | otherwise -> exitWithErr "Unable to parse output of purs --version"
     _ -> exitWithErr "Unexpected output from purs --version"
+    where
+      cmdProc "purs.cmd" = inshell "purs.cmd --version" empty
+      cmdProc purs = inproc purs [ "--version" ] empty
 
 initialize :: Maybe (Text, Maybe Text) -> IO ()
 initialize setAndSource = do
@@ -355,15 +356,21 @@ exec cmdParts onlyDeps passthroughOptions = do
   let srcParts = [ "src" </> "**" </> "*.purs" | not onlyDeps ]
   exit
     =<< Process.waitForProcess
-    =<< Process.runProcess
-          purs
-          (cmdParts <> passthroughOptions
-                    <> map Path.encodeString (srcParts <> paths))
-          Nothing -- no special path to the working dir
-          Nothing -- no env vars
-          Nothing -- use existing stdin
-          Nothing -- use existing stdout
-          Nothing -- use existing stderr
+    =<< run purs paths srcParts
+    where
+      run p paths srcParts =
+        let args = (cmdParts <> passthroughOptions) <> map Path.encodeString (srcParts <> paths)
+        in case p of
+          "purs.cmd" -> Process.runCommand $ List.unwords (p : args)
+          _ ->
+            Process.runProcess
+              p
+              args
+              Nothing -- no special path to the working dir
+              Nothing -- no env vars
+              Nothing -- use existing stdin
+              Nothing -- use existing stdout
+              Nothing -- use existing stderr
 
 checkForUpdates :: Bool -> Bool -> IO ()
 checkForUpdates applyMinorUpdates applyMajorUpdates = do
@@ -481,7 +488,15 @@ verifyPackage db paths name = do
   dependencies <- map fst <$> getTransitiveDeps db [name]
   let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs")) . dirFor) dependencies
   purs <- pursCmd
-  procs purs ("compile" : srcGlobs) empty
+  run purs srcGlobs
+  where
+    run :: MonadIO io => Text -> [Text] -> io ()
+    run "purs.cmd" globs =
+      let cmd = "purs.cmd"
+          args = "compile" : globs
+          s = T.intercalate " " $ cmd : args
+      in shells s empty
+    run command globs = procs command ("compile" : globs) empty
 
 main :: IO ()
 main = do
