@@ -204,16 +204,13 @@ pursCmd = do
   purs <- which "purs"
   cmd <- which "purs.cmd"
   exe <- which "purs.exe"
-  let mpurs = msum [ constCmd "purs" purs
-                   , constCmd "purs" exe
-                   , constCmd "purs.cmd" cmd
+  let mpurs = msum [ "purs" <$ purs
+                   , "purs" <$ exe
+                   , "purs.cmd" <$ cmd
                    ]
   case mpurs of
     Nothing -> exitWithErr "The \"purs\" executable could not be found. Please make sure your PATH variable is set correctly"
     Just c -> return c
-    where
-      constCmd :: Text -> Maybe Turtle.FilePath -> Maybe Text
-      constCmd t = fmap (const t)
 
 getPureScriptVersion :: IO Version
 getPureScriptVersion = do
