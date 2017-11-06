@@ -124,3 +124,15 @@ Not right now. We might add this feature in future, but for now, consider either
 
 - Adding your dependency to the package set if possible, or
 - Creating your own custom package set
+
+### Why are my changes not updated in my package set?
+
+Package sets are cached based on a git reference (e.g. tag or branch)
+to the project directory `.psc-package`. If you are making changes to
+a package set and reusing the package reference then you will need to
+clear the cache for the changes to take effect.
+
+```
+$ rm -rf .psc-package
+$ psc-package update
+```
