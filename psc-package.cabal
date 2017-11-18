@@ -1,5 +1,5 @@
 name:                psc-package
-version:             0.2.4
+version:             0.2.5
 synopsis:            An experimental package manager for PureScript
 description:
 homepage:            https://github.com/purescript/psc-package
