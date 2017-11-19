@@ -484,16 +484,17 @@ verifyPackage db paths name = do
   echoT ("Verifying package " <> runPackageName name)
   dependencies <- map fst <$> getTransitiveDeps db [name]
   let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs")) . dirFor) dependencies
-  purs <- pursCmd
-  run purs srcGlobs
+  runPurs srcGlobs
   where
-    run :: MonadIO io => Text -> [Text] -> io ()
-    run "purs.cmd" globs =
-      let cmd = "purs.cmd"
-          args = "compile" : globs
-          s = T.intercalate " " $ cmd : args
-      in shells s empty
-    run command globs = procs command ("compile" : globs) empty
+    runPurs :: [Text] -> IO ()
+    runPurs globs = do
+      let args = "compile" : globs
+      purs <- pursCmd
+      case purs of
+        "purs.cmd" -> do
+          let s = T.intercalate " " $ purs : args
+          shells s empty
+        _ -> procs purs args empty
 
 main :: IO ()
 main = do
