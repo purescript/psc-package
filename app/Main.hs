@@ -11,7 +11,7 @@ import qualified Control.Foldl as Foldl
 import           Control.Concurrent.Async (forConcurrently_)
 import qualified Data.Aeson as Aeson
 import           Data.Aeson.Encode.Pretty
-import           Data.Foldable (fold, foldMap, for_, traverse_)
+import           Data.Foldable (fold, foldMap, traverse_)
 import qualified Data.Graph as G
 import           Data.List (maximumBy, nub)
 import qualified Data.List as List
@@ -156,13 +156,12 @@ writePackageSet PackageConfig{ set } =
   let dbFile = ".psc-package" </> fromText set </> ".set" </> "packages.json"
   in writeTextFile dbFile . packageSetToJSON
 
-installOrUpdate :: Bool -> Text -> PackageName -> PackageInfo -> IO Turtle.FilePath
-installOrUpdate updating set pkgName PackageInfo{ repo, version } = do
+performInstall :: Text -> PackageName -> PackageInfo -> IO Turtle.FilePath
+performInstall set pkgName PackageInfo{ repo, version } = do
   let pkgDir = ".psc-package" </> fromText set </> fromText (runPackageName pkgName) </> fromText version
   exists <- testdir pkgDir
   unless exists . void $ do
-    let prefix = if updating then "Updating" else "Installing"
-    echoT (prefix <> " " <> runPackageName pkgName)
+    echoT ("Installing " <> runPackageName pkgName)
     cloneShallow repo version pkgDir
   pure pkgDir
 
@@ -198,7 +197,7 @@ installImpl config@PackageConfig{ depends } = do
   db <- readPackageSet config
   trans <- getTransitiveDeps db depends
   echoT ("Installing " <> pack (show (length trans)) <> " packages...")
-  forConcurrently_ trans . uncurry $ installOrUpdate False (set config)
+  forConcurrently_ trans . uncurry $ performInstall $ set config
 
 getPureScriptVersion :: IO Version
 getPureScriptVersion = do
@@ -435,25 +434,22 @@ verify inputName = case mkPackageName (pack inputName) of
       Just _ -> do
         reverseDeps <- map fst <$> getReverseDeps db name
         let packages = pure name <> reverseDeps
-        paths <- update (length packages) db pkg
-
-        traverse_ (verifyPackage db paths) packages
+        verifyPackages packages db pkg
 
 verifyPackageSet :: IO ()
 verifyPackageSet = do
   pkg <- readPackageFile
   db <- readPackageSet pkg
-  paths <- update (Map.size db) db pkg
+  verifyPackages (Map.keys db) db pkg
 
-  for_ (Map.toList db) $ \(name, _) -> verifyPackage db paths name
-
-update :: Int -> PackageSet -> PackageConfig -> IO (Map.Map PackageName Turtle.FilePath)
-update size db pkg = do
-  echoT ("Verifying " <> pack (show size) <> " packages.")
+verifyPackages :: [PackageName] -> PackageSet -> PackageConfig -> IO ()
+verifyPackages names db pkg = do
+  echoT ("Verifying " <> pack (show $ length names) <> " packages.")
   echoT "Warning: this could take some time!"
 
-  let go (name, pkgInfo) = (name, ) <$> installOrUpdate True (set pkg) name pkgInfo
-  Map.fromList <$> traverse go (Map.toList db)
+  let go (name, pkgInfo) = (name, ) <$> performInstall (set pkg) name pkgInfo
+  paths <- Map.fromList <$> traverse go (Map.toList db)
+  traverse_ (verifyPackage db paths) names
 
 verifyPackage :: PackageSet -> Map.Map PackageName Turtle.FilePath -> PackageName -> IO ()
 verifyPackage db paths name = do
