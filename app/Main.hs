@@ -436,11 +436,12 @@ verify inputName = case mkPackageName (pack inputName) of
         let packages = pure name <> reverseDeps
         verifyPackages packages db pkg
 
-verifyPackageSet :: IO ()
-verifyPackageSet = do
+verifyPackageSet :: Maybe Text -> IO ()
+verifyPackageSet after = do
   pkg <- readPackageFile
   db <- readPackageSet pkg
-  verifyPackages (Map.keys db) db pkg
+  let filtered = maybe db (\after_ -> Map.filterWithKey (\k _ -> runPackageName k >= after_) db) after
+  verifyPackages (Map.keys filtered) db pkg
 
 verifyPackages :: [PackageName] -> PackageSet -> PackageConfig -> IO ()
 verifyPackages names db pkg = do
@@ -518,7 +519,7 @@ main = do
             (Opts.info (checkForUpdates <$> apply <*> applyMajor Opts.<**> Opts.helper)
             (Opts.progDesc "Check all packages in the package set for new releases"))
         , Opts.command "verify-set"
-            (Opts.info (pure verifyPackageSet)
+            (Opts.info (verifyPackageSet <$> optional (fromString <$> after))
             (Opts.progDesc "Verify that the packages in the package set build correctly"))
         , Opts.command "verify"
             (Opts.info (verify <$> pkg Opts.<**> Opts.helper)
@@ -558,3 +559,7 @@ main = do
              Opts.long "sort"
           <> Opts.short 's'
           <> Opts.help "Sort packages in dependency order"
+
+        after = Opts.strOption $
+             Opts.long "after"
+          <> Opts.help "Skip packages before this package during verification"
