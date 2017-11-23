@@ -423,34 +423,36 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
     isMinorReleaseFrom (x : xs) (y : ys) = y == x && ys > xs
     isMinorReleaseFrom _        _        = False
 
-verify :: String -> IO ()
-verify inputName = case mkPackageName (pack inputName) of
-  Left pnError -> echoT . pack $ "Error while parsing input package name: " <> show pnError
-  Right name -> do
+verify :: Maybe Text -> Maybe Text -> IO ()
+verify name after = case name of
+  Nothing -> do
     pkg <- readPackageFile
     db <- readPackageSet pkg
-    case name `Map.lookup` db of
-      Nothing -> echoT . pack $ "No packages found with the name " <> show (runPackageName name)
-      Just _ -> do
-        reverseDeps <- map fst <$> getReverseDeps db name
-        let packages = pure name <> reverseDeps
-        verifyPackages packages db pkg
+    verifyPackages (Map.keys $ filterPackageSet db after) db pkg
 
-verifyPackageSet :: Maybe Text -> IO ()
-verifyPackageSet after = do
-  pkg <- readPackageFile
-  db <- readPackageSet pkg
-  let filtered = maybe db (\after_ -> Map.filterWithKey (\k _ -> runPackageName k >= after_) db) after
-  verifyPackages (Map.keys filtered) db pkg
+  (Just name') -> case mkPackageName name' of
+    Left pnError -> echoT . pack $ "Error while parsing input package name: " <> show pnError
+    Right pName -> do
+      pkg <- readPackageFile
+      db <- readPackageSet pkg
+      case pName `Map.lookup` db of
+        Nothing -> echoT . pack $ "No packages found with the name " <> show (runPackageName pName)
+        Just _ -> do
+          reverseDeps <- map fst <$> getReverseDeps (filterPackageSet db after) pName
+          let packages = pure pName <> reverseDeps
+          verifyPackages packages db pkg
+  where
+    filterPackageSet :: PackageSet -> Maybe Text -> PackageSet
+    filterPackageSet db = maybe db $ \after_ -> Map.filterWithKey (\k _ -> runPackageName k >= after_) db
 
-verifyPackages :: [PackageName] -> PackageSet -> PackageConfig -> IO ()
-verifyPackages names db pkg = do
-  echoT ("Verifying " <> pack (show $ length names) <> " packages.")
-  echoT "Warning: this could take some time!"
+    verifyPackages :: [PackageName] -> PackageSet -> PackageConfig -> IO ()
+    verifyPackages names db pkg = do
+      echoT ("Verifying " <> pack (show $ length names) <> " packages.")
+      echoT "Warning: this could take some time!"
 
-  let go (name, pkgInfo) = (name, ) <$> performInstall (set pkg) name pkgInfo
-  paths <- Map.fromList <$> traverse go (Map.toList db)
-  traverse_ (verifyPackage db paths) names
+      let go (name_, pkgInfo) = (name_, ) <$> performInstall (set pkg) name_ pkgInfo
+      paths <- Map.fromList <$> traverse go (Map.toList db)
+      traverse_ (verifyPackage db paths) names
 
 verifyPackage :: PackageSet -> Map.Map PackageName Turtle.FilePath -> PackageName -> IO ()
 verifyPackage db paths name = do
@@ -518,12 +520,11 @@ main = do
         , Opts.command "updates"
             (Opts.info (checkForUpdates <$> apply <*> applyMajor Opts.<**> Opts.helper)
             (Opts.progDesc "Check all packages in the package set for new releases"))
-        , Opts.command "verify-set"
-            (Opts.info (verifyPackageSet <$> optional (fromString <$> after))
-            (Opts.progDesc "Verify that the packages in the package set build correctly"))
         , Opts.command "verify"
-            (Opts.info (verify <$> pkg Opts.<**> Opts.helper)
-            (Opts.progDesc "Verify the named package"))
+            (Opts.info (verify <$>
+                        optional (fromString <$> pkg) <*>
+                        optional (fromString <$> after) Opts.<**> Opts.helper)
+            (Opts.progDesc "Verify that the named package builds correctly. If no package is specified, verify that all packages in the package set build correctly."))
         ]
       where
         pkg = Opts.strArgument $
