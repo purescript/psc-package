@@ -35,7 +35,7 @@ import           System.Environment (getArgs)
 import qualified System.IO as IO
 import qualified System.Process as Process
 import qualified Text.ParserCombinators.ReadP as Read
-import           Turtle hiding (echo, fold, prefix, s, x)
+import           Turtle hiding (arg, echo, fold, prefix, s, x)
 import qualified Turtle
 import           Types (PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
 
@@ -423,36 +423,43 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
     isMinorReleaseFrom (x : xs) (y : ys) = y == x && ys > xs
     isMinorReleaseFrom _        _        = False
 
-verify :: Maybe Text -> Maybe Text -> IO ()
-verify name after = case name of
-  Nothing -> do
+data VerifyArgs a = Package a | After a | NoArg
+
+verify :: VerifyArgs Text -> IO ()
+verify (Package name) = case mkPackageName name of
+  Left pnError -> echoT . pack $ "Error while parsing input package name: " <> show pnError
+  Right pName  -> do
     pkg <- readPackageFile
-    db <- readPackageSet pkg
-    verifyPackages (Map.keys $ filterPackageSet db after) db pkg
+    db  <- readPackageSet pkg
+    case pName `Map.lookup` db of
+      Nothing -> echoT . pack $ "No packages found with the name " <> show (runPackageName pName)
+      Just _  -> do
+        reverseDeps <- map fst <$> getReverseDeps db pName
+        let packages = pure pName <> reverseDeps
+        verifyPackages packages db pkg
 
-  (Just name') -> case mkPackageName name' of
-    Left pnError -> echoT . pack $ "Error while parsing input package name: " <> show pnError
-    Right pName -> do
-      pkg <- readPackageFile
-      db <- readPackageSet pkg
-      case pName `Map.lookup` db of
-        Nothing -> echoT . pack $ "No packages found with the name " <> show (runPackageName pName)
-        Just _ -> do
-          reverseDeps <- map fst <$> getReverseDeps (filterPackageSet db after) pName
-          let packages = pure pName <> reverseDeps
-          verifyPackages packages db pkg
-  where
-    filterPackageSet :: PackageSet -> Maybe Text -> PackageSet
-    filterPackageSet db = maybe db $ \after_ -> Map.filterWithKey (\k _ -> runPackageName k >= after_) db
+verify (After after) = case mkPackageName after of
+  Left pnError -> echoT . pack $ "Error while parsing the option argument name: " <> show pnError
+  Right pName  -> do
+    pkg <- readPackageFile
+    db  <- readPackageSet pkg
+    let name     = runPackageName pName
+    let packages = Map.keys $ Map.filterWithKey (\k _ -> runPackageName k >= name) db
+    verifyPackages packages db pkg
 
-    verifyPackages :: [PackageName] -> PackageSet -> PackageConfig -> IO ()
-    verifyPackages names db pkg = do
-      echoT ("Verifying " <> pack (show $ length names) <> " packages.")
-      echoT "Warning: this could take some time!"
+verify NoArg = do
+  pkg <- readPackageFile
+  db  <- readPackageSet pkg
+  verifyPackages (Map.keys db) db pkg
 
-      let go (name_, pkgInfo) = (name_, ) <$> performInstall (set pkg) name_ pkgInfo
-      paths <- Map.fromList <$> traverse go (Map.toList db)
-      traverse_ (verifyPackage db paths) names
+verifyPackages :: [PackageName] -> PackageSet -> PackageConfig -> IO ()
+verifyPackages names db pkg = do
+  echoT $ "Verifying " <> pack (show $ length names) <> " packages."
+  echoT "Warning: this could take some time!"
+
+  let go (name_, pkgInfo) = (name_, ) <$> performInstall (set pkg) name_ pkgInfo
+  paths <- Map.fromList <$> traverse go (Map.toList db)
+  traverse_ (verifyPackage db paths) names
 
 verifyPackage :: PackageSet -> Map.Map PackageName Turtle.FilePath -> PackageName -> IO ()
 verifyPackage db paths name = do
@@ -522,8 +529,10 @@ main = do
             (Opts.progDesc "Check all packages in the package set for new releases"))
         , Opts.command "verify"
             (Opts.info (verify <$>
-                        optional (fromString <$> pkg) <*>
-                        optional (fromString <$> after) Opts.<**> Opts.helper)
+                        ((Package . fromString <$> pkg)
+                         <|> (After . fromString <$> after)
+                         <|> pure NoArg)
+                        Opts.<**> Opts.helper)
             (Opts.progDesc "Verify that the named package builds correctly. If no package is specified, verify that all packages in the package set build correctly."))
         ]
       where
