@@ -4,6 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE DeriveTraversable #-}
 
 module Main where
 
@@ -423,51 +424,43 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
     isMinorReleaseFrom (x : xs) (y : ys) = y == x && ys > xs
     isMinorReleaseFrom _        _        = False
 
-data VerifyArgs a = Package a | After a | NoArg
+data VerifyArgs a = Package a | VerifyAll (Maybe a) deriving (Functor, Foldable, Traversable)
 
 verify :: VerifyArgs Text -> IO ()
-verify (Package name) = case mkPackageName name of
-  Left pnError -> echoT . pack $ "Error while parsing input package name: " <> show pnError
-  Right pName  -> do
-    pkg <- readPackageFile
-    db  <- readPackageSet pkg
-    case pName `Map.lookup` db of
+verify arg = do
+  pkg <- readPackageFile
+  db  <- readPackageSet pkg
+  case traverse mkPackageName arg of
+    Left pnError -> echoT . pack $ "Error while parsing arguments to verify: " <> show pnError
+    Right (Package pName) -> case Map.lookup pName db of
       Nothing -> echoT . pack $ "No packages found with the name " <> show (runPackageName pName)
       Just _  -> do
         reverseDeps <- map fst <$> getReverseDeps db pName
         let packages = pure pName <> reverseDeps
         verifyPackages packages db pkg
 
-verify (After after) = case mkPackageName after of
-  Left pnError -> echoT . pack $ "Error while parsing the option argument name: " <> show pnError
-  Right pName  -> do
-    pkg <- readPackageFile
-    db  <- readPackageSet pkg
-    let name     = runPackageName pName
-    let packages = Map.keys $ Map.filterWithKey (\k _ -> runPackageName k >= name) db
-    verifyPackages packages db pkg
+    Right (VerifyAll pName) -> verifyPackages packages db pkg
+      where
+        packages = Map.keys $ maybe db pFilter pName
+        pFilter name = Map.filterWithKey (\k _ -> runPackageName k >= runPackageName name) db
 
-verify NoArg = do
-  pkg <- readPackageFile
-  db  <- readPackageSet pkg
-  verifyPackages (Map.keys db) db pkg
+  where
+    verifyPackages :: [PackageName] -> PackageSet -> PackageConfig -> IO ()
+    verifyPackages names db pkg = do
+      echoT $ "Verifying " <> pack (show $ length names) <> " packages."
+      echoT "Warning: this could take some time!"
 
-verifyPackages :: [PackageName] -> PackageSet -> PackageConfig -> IO ()
-verifyPackages names db pkg = do
-  echoT $ "Verifying " <> pack (show $ length names) <> " packages."
-  echoT "Warning: this could take some time!"
+      let go (name_, pkgInfo) = (name_, ) <$> performInstall (set pkg) name_ pkgInfo
+      paths <- Map.fromList <$> traverse go (Map.toList db)
+      traverse_ (verifyPackage db paths) names
 
-  let go (name_, pkgInfo) = (name_, ) <$> performInstall (set pkg) name_ pkgInfo
-  paths <- Map.fromList <$> traverse go (Map.toList db)
-  traverse_ (verifyPackage db paths) names
-
-verifyPackage :: PackageSet -> Map.Map PackageName Turtle.FilePath -> PackageName -> IO ()
-verifyPackage db paths name = do
-  let dirFor pkgName = fromMaybe (error ("verifyPackageSet: no directory for " <> show pkgName)) (Map.lookup pkgName paths)
-  echoT ("Verifying package " <> runPackageName name)
-  dependencies <- map fst <$> getTransitiveDeps db [name]
-  let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs")) . dirFor) dependencies
-  procs "purs" ("compile" : srcGlobs) empty
+    verifyPackage :: PackageSet -> Map.Map PackageName Turtle.FilePath -> PackageName -> IO ()
+    verifyPackage db paths name = do
+      let dirFor pkgName = fromMaybe (error ("verifyPackageSet: no directory for " <> show pkgName)) (Map.lookup pkgName paths)
+      echoT ("Verifying package " <> runPackageName name)
+      dependencies <- map fst <$> getTransitiveDeps db [name]
+      let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs")) . dirFor) dependencies
+      procs "purs" ("compile" : srcGlobs) empty
 
 main :: IO ()
 main = do
@@ -530,8 +523,7 @@ main = do
         , Opts.command "verify"
             (Opts.info (verify <$>
                         ((Package . fromString <$> pkg)
-                         <|> (After . fromString <$> after)
-                         <|> pure NoArg)
+                         <|> (VerifyAll <$> optional (fromString <$> after)))
                         Opts.<**> Opts.helper)
             (Opts.progDesc "Verify that the named package builds correctly. If no package is specified, verify that all packages in the package set build correctly."))
         ]
