@@ -117,34 +117,21 @@ data CloneTarget = CloneTag Text
                  | CloneSHA Text
                  deriving (Show)
 
-toCloneTarget
-  :: Repo
-  -> Text
-  -> IO CloneTarget
-toCloneTarget (Repo from) raw = do
-  remoteLines <- Turtle.fold (lineToText <$> gitProc) Foldl.list
-  let refs = Set.fromList (mapMaybe parseRef remoteLines)
-  if Set.member rawAsBranch refs
-     then do
-       echoT (raw <> " is a branch. psc-package only supports tags and SHAs.")
-       exit (ExitFailure 1)
-     else if Set.member rawAsTag refs
-             then return (CloneTag raw)
-             else return (CloneSHA raw)
+
+parseCloneTarget
+  :: Text
+  -> Either Text CloneTarget
+parseCloneTarget t =
+  if T.null remainder
+     then Right (CloneTag t)
+     else case T.toLower schemeName of
+      "sha" -> Right (CloneSHA withoutScheme)
+      "tag" -> Right (CloneTag withoutScheme)
+      _ -> Left ("Invalid scheme. Expected sha:// | tag:// but got " <> schemeName)
   where
-    rawAsBranch = "refs/heads/" <> raw
-    rawAsTag = "refs/tags/" <> raw
-    gitProc = inproc "git"
-      ["ls-remote"
-      , "-q"
-      , "--refs"
-      , "--heads"
-      , "--tags"
-      , from
-      ] empty
-    parseRef line = case T.splitOn "\t" line of
-      [_, ref] | "refs/" `T.isPrefixOf` ref -> Just ref
-      _ -> Nothing
+    (schemeName, remainder) = T.breakOn "://" t
+    withoutScheme = T.drop 3 remainder
+
 
 -- Both tags and SHAs can be treated as immutable so we only have to run this once
 cloneShallow
@@ -218,10 +205,12 @@ installOrUpdate :: Text -> PackageName -> PackageInfo -> IO Turtle.FilePath
 installOrUpdate set pkgName PackageInfo{ repo, version } = do
   let pkgDir = ".psc-package" </> fromText set </> fromText (runPackageName pkgName) </> fromText version
   echoT ("Updating " <> runPackageName pkgName)
-  target <- toCloneTarget repo version
-  exists <- testdir pkgDir
-  unless exists . void $ cloneShallow repo target pkgDir
-  pure pkgDir
+  case parseCloneTarget version of
+    Left parseError -> exitWithErr parseError
+    Right target -> do
+      exists <- testdir pkgDir
+      unless exists . void $ cloneShallow repo target pkgDir
+      pure pkgDir
 
 getTransitiveDeps :: PackageSet -> [PackageName] -> IO [(PackageName, PackageInfo)]
 getTransitiveDeps db deps =
