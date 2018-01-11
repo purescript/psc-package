@@ -35,7 +35,7 @@ import           System.Environment (getArgs)
 import qualified System.IO as IO
 import qualified System.Process as Process
 import qualified Text.ParserCombinators.ReadP as Read
-import           Turtle hiding (echo, fold, s, x)
+import           Turtle hiding (echo, fold, s, x, nub)
 import qualified Turtle
 import           Types (PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
 
