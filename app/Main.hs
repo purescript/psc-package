@@ -127,9 +127,9 @@ parseCloneTarget t =
      else case T.toLower schemeName of
       "sha" -> Right (CloneSHA withoutScheme)
       "tag" -> Right (CloneTag withoutScheme)
-      _ -> Left ("Invalid scheme. Expected sha:// | tag:// but got " <> schemeName)
+      _ -> Left ("Invalid scheme. Expected sha: | tag: but got " <> schemeName)
   where
-    (schemeName, remainder) = T.breakOn "://" t
+    (schemeName, remainder) = T.breakOn ":" t
     withoutScheme = T.drop 3 remainder
 
 
