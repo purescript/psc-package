@@ -118,6 +118,8 @@ data CloneTarget = CloneTag Text
                  deriving (Show)
 
 
+-- | Parses "sha:somesha", "tag:sometag", and "sometag" without a
+-- schema as a tag.
 parseCloneTarget
   :: Text
   -> Either Text CloneTarget
@@ -130,7 +132,7 @@ parseCloneTarget t =
       _ -> Left ("Invalid scheme. Expected sha: | tag: but got " <> schemeName)
   where
     (schemeName, remainder) = T.breakOn ":" t
-    withoutScheme = T.drop 3 remainder
+    withoutScheme = T.drop 1 remainder
 
 
 -- Both tags and SHAs can be treated as immutable so we only have to run this once
