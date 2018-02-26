@@ -4,6 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE DeriveTraversable #-}
 
 module Main where
 
@@ -11,7 +12,7 @@ import qualified Control.Foldl as Foldl
 import           Control.Concurrent.Async (forConcurrently_)
 import qualified Data.Aeson as Aeson
 import           Data.Aeson.Encode.Pretty
-import           Data.Foldable (fold, foldMap, for_, traverse_)
+import           Data.Foldable (fold, foldMap, traverse_)
 import qualified Data.Graph as G
 import           Data.List (maximumBy, nub)
 import qualified Data.List as List
@@ -35,7 +36,7 @@ import           System.Environment (getArgs)
 import qualified System.IO as IO
 import qualified System.Process as Process
 import qualified Text.ParserCombinators.ReadP as Read
-import           Turtle hiding (echo, fold, s, x)
+import           Turtle hiding (arg, echo, fold, prefix, s, x)
 import qualified Turtle
 import           Types (PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
 
@@ -156,12 +157,12 @@ writePackageSet PackageConfig{ set } =
   let dbFile = ".psc-package" </> fromText set </> ".set" </> "packages.json"
   in writeTextFile dbFile . packageSetToJSON
 
-installOrUpdate :: Text -> PackageName -> PackageInfo -> IO Turtle.FilePath
-installOrUpdate set pkgName PackageInfo{ repo, version } = do
+performInstall :: Text -> PackageName -> PackageInfo -> IO Turtle.FilePath
+performInstall set pkgName PackageInfo{ repo, version } = do
   let pkgDir = ".psc-package" </> fromText set </> fromText (runPackageName pkgName) </> fromText version
   exists <- testdir pkgDir
   unless exists . void $ do
-    echoT ("Updating " <> runPackageName pkgName)
+    echoT ("Installing " <> runPackageName pkgName)
     cloneShallow repo version pkgDir
   pure pkgDir
 
@@ -191,13 +192,13 @@ getTransitiveDeps db deps =
             m <- fold <$> traverse (go (Set.insert pkg seen)) dependencies
             return (Map.insert pkg info m)
 
-updateImpl :: PackageConfig -> IO ()
-updateImpl config@PackageConfig{ depends } = do
+installImpl :: PackageConfig -> IO ()
+installImpl config@PackageConfig{ depends } = do
   getPackageSet config
   db <- readPackageSet config
   trans <- getTransitiveDeps db depends
-  echoT ("Updating " <> pack (show (length trans)) <> " packages...")
-  forConcurrently_ trans . uncurry $ installOrUpdate (set config)
+  echoT ("Installing " <> pack (show (length trans)) <> " packages...")
+  forConcurrently_ trans . uncurry $ performInstall $ set config
 
 getPureScriptVersion :: IO Version
 getPureScriptVersion = do
@@ -235,23 +236,22 @@ initialize setAndSource = do
                            }
 
     writePackageFile pkg
-    updateImpl pkg
+    installImpl pkg
   where
     packageNameFromPWD =
       either (const untitledPackageName) id . mkPackageName
 
-update :: IO ()
-update = do
-  pkg <- readPackageFile
-  updateImpl pkg
-  echoT "Update complete"
-
-install :: String -> IO ()
+install :: Maybe String -> IO ()
 install pkgName' = do
   pkg <- readPackageFile
-  pkgName <- packageNameFromString pkgName'
-  let pkg' = pkg { depends = nub (pkgName : depends pkg) }
-  updateAndWritePackageFile pkg'
+  case pkgName' of
+    Nothing -> do
+      installImpl pkg
+      echoT "Install complete"
+    Just str -> do
+      pkgName <- packageNameFromString str
+      let pkg' = pkg { depends = nub (pkgName : depends pkg) }
+      updateAndWritePackageFile pkg'
 
 uninstall :: String -> IO ()
 uninstall pkgName' = do
@@ -262,7 +262,7 @@ uninstall pkgName' = do
 
 updateAndWritePackageFile :: PackageConfig -> IO ()
 updateAndWritePackageFile pkg = do
-  updateImpl pkg
+  installImpl pkg
   writePackageFile pkg
   echoT "psc-package.json file was updated"
 
@@ -329,7 +329,7 @@ listSourcePaths = do
 exec :: [String] -> Bool -> [String] -> IO ()
 exec execNames onlyDeps passthroughOptions = do
   pkg <- readPackageFile
-  updateImpl pkg
+  installImpl pkg
 
   paths <- getPaths
   let cmdParts = tail execNames
@@ -424,46 +424,43 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
     isMinorReleaseFrom (x : xs) (y : ys) = y == x && ys > xs
     isMinorReleaseFrom _        _        = False
 
-verify :: String -> IO ()
-verify inputName = case mkPackageName (pack inputName) of
-  Left pnError -> echoT . pack $ "Error while parsing input package name: " <> show pnError
-  Right name -> do
-    pkg <- readPackageFile
-    db <- readPackageSet pkg
-    case name `Map.lookup` db of
-      Nothing -> echoT . pack $ "No packages found with the name " <> show (runPackageName $ name)
-      Just _ -> do
-        reverseDeps <- map fst <$> getReverseDeps db name
-        let packages = pure name <> reverseDeps
-        echoT ("Verifying " <> pack (show (length packages)) <> " packages.")
-        echoT "Warning: this could take some time!"
+data VerifyArgs a = Package a | VerifyAll (Maybe a) deriving (Functor, Foldable, Traversable)
 
-        let installOrUpdate' (name_, pkgInfo) = (name_, ) <$> installOrUpdate (set pkg) name_ pkgInfo
-        paths <- Map.fromList <$> traverse installOrUpdate' (Map.toList db)
-
-        traverse_ (verifyPackage db paths) packages
-
-verifyPackageSet :: Maybe Text -> IO ()
-verifyPackageSet after = do
+verify :: VerifyArgs Text -> IO ()
+verify arg = do
   pkg <- readPackageFile
-  db <- readPackageSet pkg
+  db  <- readPackageSet pkg
+  case traverse mkPackageName arg of
+    Left pnError -> echoT . pack $ "Error while parsing arguments to verify: " <> show pnError
+    Right (Package pName) -> case Map.lookup pName db of
+      Nothing -> echoT . pack $ "No packages found with the name " <> show (runPackageName pName)
+      Just _  -> do
+        reverseDeps <- map fst <$> getReverseDeps db pName
+        let packages = pure pName <> reverseDeps
+        verifyPackages packages db pkg
 
-  let filtered = maybe db (\after_ -> Map.filterWithKey (\k _ -> runPackageName k >= after_) db) after
-  echoT ("Verifying " <> pack (show (Map.size filtered)) <> " packages.")
-  echoT "Warning: this could take some time!"
+    Right (VerifyAll pName) -> verifyPackages packages db pkg
+      where
+        packages = Map.keys $ maybe db pFilter pName
+        pFilter name = Map.filterWithKey (\k _ -> runPackageName k >= runPackageName name) db
 
-  let installOrUpdate' (name, pkgInfo) = (name, ) <$> installOrUpdate (set pkg) name pkgInfo
-  paths <- Map.fromList <$> traverse installOrUpdate' (Map.toList db)
+  where
+    verifyPackages :: [PackageName] -> PackageSet -> PackageConfig -> IO ()
+    verifyPackages names db pkg = do
+      echoT $ "Verifying " <> pack (show $ length names) <> " packages."
+      echoT "Warning: this could take some time!"
 
-  for_ (Map.toList filtered) $ \(name, _) -> verifyPackage db paths name
+      let go (name_, pkgInfo) = (name_, ) <$> performInstall (set pkg) name_ pkgInfo
+      paths <- Map.fromList <$> traverse go (Map.toList db)
+      traverse_ (verifyPackage db paths) names
 
-verifyPackage :: PackageSet -> Map.Map PackageName Turtle.FilePath -> PackageName -> IO ()
-verifyPackage db paths name = do
-  let dirFor pkgName = fromMaybe (error ("verifyPackageSet: no directory for " <> show pkgName)) (Map.lookup pkgName paths)
-  echoT ("Verifying package " <> runPackageName name)
-  dependencies <- map fst <$> getTransitiveDeps db [name]
-  let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs")) . dirFor) dependencies
-  procs "purs" ("compile" : srcGlobs) empty
+    verifyPackage :: PackageSet -> Map.Map PackageName Turtle.FilePath -> PackageName -> IO ()
+    verifyPackage db paths name = do
+      let dirFor pkgName = fromMaybe (error ("verifyPackageSet: no directory for " <> show pkgName)) (Map.lookup pkgName paths)
+      echoT ("Verifying package " <> runPackageName name)
+      dependencies <- map fst <$> getTransitiveDeps db [name]
+      let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs")) . dirFor) dependencies
+      procs "purs" ("compile" : srcGlobs) empty
 
 main :: IO ()
 main = do
@@ -493,21 +490,18 @@ main = do
                                                      <*> optional (fromString <$> source))
                                    Opts.<**> Opts.helper)
             (Opts.progDesc "Create a new psc-package.json file"))
-        , Opts.command "update"
-            (Opts.info (pure update)
-            (Opts.progDesc "Install or update package dependencies"))
         , Opts.command "uninstall"
             (Opts.info (uninstall <$> pkg Opts.<**> Opts.helper)
             (Opts.progDesc "Uninstall the named package"))
         , Opts.command "install"
-            (Opts.info (install <$> pkg Opts.<**> Opts.helper)
-            (Opts.progDesc "Install the named package"))
+            (Opts.info (install <$> optional pkg Opts.<**> Opts.helper)
+            (Opts.progDesc "Install/update the named package and add it to 'depends' if not already listed. If no package is specified, install/update all dependencies."))
         , Opts.command "build"
             (Opts.info (exec ["purs", "compile"]
                         <$> onlyDeps "Compile only the package's dependencies"
                         <*> passthroughArgs "purs compile"
                         Opts.<**> Opts.helper)
-            (Opts.progDesc "Update dependencies and compile the current package"))
+            (Opts.progDesc "Install dependencies and compile the current package"))
         , Opts.command "repl"
             (Opts.info (exec ["purs", "repl"]
                         <$> onlyDeps "Load only the package's dependencies"
@@ -526,12 +520,12 @@ main = do
         , Opts.command "updates"
             (Opts.info (checkForUpdates <$> apply <*> applyMajor Opts.<**> Opts.helper)
             (Opts.progDesc "Check all packages in the package set for new releases"))
-        , Opts.command "verify-set"
-            (Opts.info (verifyPackageSet <$> optional (fromString <$> after))
-            (Opts.progDesc "Verify that the packages in the package set build correctly"))
         , Opts.command "verify"
-            (Opts.info (verify <$> pkg Opts.<**> Opts.helper)
-            (Opts.progDesc "Verify the named package"))
+            (Opts.info (verify <$>
+                        ((Package . fromString <$> pkg)
+                         <|> (VerifyAll <$> optional (fromString <$> after)))
+                        Opts.<**> Opts.helper)
+            (Opts.progDesc "Verify that the named package builds correctly. If no package is specified, verify that all packages in the package set build correctly."))
         ]
       where
         pkg = Opts.strArgument $

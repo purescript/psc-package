@@ -13,9 +13,9 @@
 
 ```shell
 # install or update the dependencies listed in psc-package.json
-$ psc-package update
+$ psc-package install
 
-# install the package and add it to psc-package.json
+# install or update the package and add it to psc-package.json if not listed
 $ psc-package install <package>
 
 # list available commands
