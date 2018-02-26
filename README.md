@@ -79,8 +79,8 @@ A new package can be created using `psc-package init`. This will:
 
 To add a dependency, either:
 
-- Use the `install` command, which will update the project configuration automatically, or
-- Modify the `psc-package.json` file, and sync manually by running the `update` command.
+- Use the `install <package name>` command, which will update the project configuration automatically, or
+- Modify the `psc-package.json` file, and sync manually by running the `install` command (previously `update`).
 
 ### Build a project
 
@@ -128,11 +128,23 @@ Then copy over `packages.json` into the directory:
 
 If this builds correctly, you can then push up this branch and make a pull request. Travis will verify your package builds correctly, and then we will try to merge your pull request. Your package will then be available in the next tagged package set.
 
+### Formatting the package set
+
+When creating your pull request, make sure to run the `format` command to pretty-print the packages file. This helps us avoid problems in the future with git diffs and so on.
+
 ### Update a package in the set
 
 Similar to the above, you will need to do the setup. You can then modify the version field to the version you wish to use. Once you have updated the package set, run the copy command and verify the package you have modified.
 
 Then you can make a pull request. Again, once Travis verifies your change, we will merge it into `master` and your change will be available in the next tag.
+
+### Add a package from Bower
+
+If you have Bower installed on your system, you can easily add a package from Bower to the package set. Use the Bower package name to add the package using the `add-from-bower` command:
+
+```
+psc-package add-from-bower <purescript-something>
+```
 
 ## FAQ
 
@@ -152,5 +164,5 @@ clear the cache for the changes to take effect.
 
 ```
 $ rm -rf .psc-package
-$ psc-package update
+$ psc-package install
 ```
