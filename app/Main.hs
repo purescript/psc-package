@@ -5,14 +5,17 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
 
 import qualified Control.Foldl as Foldl
 import           Control.Concurrent.Async (forConcurrently_)
 import qualified Data.Aeson as Aeson
+import           Data.Aeson.Types (fieldLabelModifier)
 import           Data.Aeson.Encode.Pretty
 import           Data.Foldable (fold, foldMap, traverse_)
+import qualified Data.Bifunctor as Bifunctor
 import qualified Data.Graph as G
 import           Data.List (maximumBy, nub)
 import qualified Data.List as List
@@ -36,7 +39,7 @@ import           System.Environment (getArgs)
 import qualified System.IO as IO
 import qualified System.Process as Process
 import qualified Text.ParserCombinators.ReadP as Read
-import           Turtle hiding (arg, echo, fold, prefix, s, x)
+import           Turtle hiding (arg, fold, s, x)
 import qualified Turtle
 import           Types (PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
 
@@ -60,6 +63,9 @@ data PackageConfig = PackageConfig
 pathToTextUnsafe :: Turtle.FilePath -> Text
 pathToTextUnsafe = either (error "Path.toText failed") id . Path.toText
 
+shellToIOText :: Turtle.Shell Line -> IO [Text]
+shellToIOText shellLines = Turtle.fold (fmap lineToText shellLines) Foldl.list
+
 readPackageFile :: IO PackageConfig
 readPackageFile = do
   exists <- testfile packageFile
@@ -82,6 +88,7 @@ packageConfigToJSON =
                             , "source"
                             , "depends"
                             ]
+               , confIndent = Spaces 2
                }
 
 packageSetToJSON :: PackageSet -> Text
@@ -90,7 +97,7 @@ packageSetToJSON =
     . TB.toLazyText
     . encodePrettyToTextBuilder' config
   where
-    config = defConfig { confCompare = compare }
+    config = defConfig { confCompare = compare, confIndent = Spaces 2 }
 
 writePackageFile :: PackageConfig -> IO ()
 writePackageFile =
@@ -203,7 +210,7 @@ installImpl config@PackageConfig{ depends } = do
 getPureScriptVersion :: IO Version
 getPureScriptVersion = do
   let pursProc = inproc "purs" [ "--version" ] empty
-  outputLines <- Turtle.fold (fmap lineToText pursProc) Foldl.list
+  outputLines <- shellToIOText pursProc
   case outputLines of
     [onlyLine]
       | results@(_ : _) <- Read.readP_to_S parseVersion (T.unpack onlyLine) ->
@@ -462,6 +469,55 @@ verify arg = do
       let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs")) . dirFor) dependencies
       procs "purs" ("compile" : srcGlobs) empty
 
+data BowerInfoRepo = BowerInfoRepo
+  { url :: Text
+  } deriving (Show, Eq, Generic, Aeson.FromJSON)
+
+data BowerInfo = BowerInfo
+  { bower_name         :: Text
+  , bower_repository   :: BowerInfoRepo
+  , bower_dependencies :: Map.Map Text Text
+  , bower_version      :: Text
+  } deriving (Show, Eq, Generic)
+instance Aeson.FromJSON BowerInfo where
+  parseJSON = Aeson.genericParseJSON Aeson.defaultOptions
+    { fieldLabelModifier = drop 6
+    }
+
+data BowerOutput = BowerOutput
+  { latest :: BowerInfo
+  } deriving (Show, Eq, Generic, Aeson.FromJSON)
+
+addFromBower :: String -> IO ()
+addFromBower name = do
+  let bowerProc = inproc "bower" [ "info", T.pack name, "--json", "-l=error" ] empty
+  result <- fold <$> shellToIOText bowerProc
+  if T.null result
+    then exitWithErr "Error: Does the package exist on Bower?"
+    else do
+      let result' = do
+            bowerOutput <- Aeson.eitherDecodeStrict $ encodeUtf8 result
+            let bowerInfo = latest bowerOutput
+            pkgName <- mkPackageName' $ bower_name bowerInfo
+            packageNames <- traverse mkPackageName' $ Map.keys (bower_dependencies bowerInfo)
+            pure $
+              ( pkgName
+              , PackageInfo
+                (url $ bower_repository bowerInfo)
+                ("v" <> bower_version bowerInfo)
+                packageNames
+              )
+      case result' of
+        Right (pkgName, info) -> do
+          pkg <- readPackageFile
+          db <- readPackageSet pkg
+          writePackageSet pkg $ Map.insert pkgName info db
+          echoT $ "Successfully wrote " <> runPackageName pkgName <> " to package set."
+        Left errors -> echoT $ "Errors processing Bower Info: " <> (T.pack errors)
+  where
+    stripBowerNamePrefix s = fromMaybe s $ T.stripPrefix "purescript-" s
+    mkPackageName' = Bifunctor.first show . mkPackageName . stripBowerNamePrefix
+
 main :: IO ()
 main = do
     IO.hSetEncoding IO.stdout IO.utf8
@@ -526,6 +582,9 @@ main = do
                          <|> (VerifyAll <$> optional (fromString <$> after)))
                         Opts.<**> Opts.helper)
             (Opts.progDesc "Verify that the named package builds correctly. If no package is specified, verify that all packages in the package set build correctly."))
+        , Opts.command "add-from-bower"
+            (Opts.info (addFromBower <$> pkg Opts.<**> Opts.helper)
+            (Opts.progDesc "Add a package from the Bower registry to the package set. This requires Bower to be installed on your system."))
         ]
       where
         pkg = Opts.strArgument $
