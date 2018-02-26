@@ -53,6 +53,9 @@ exitWithErr errText = errT errText >> exit (ExitFailure 1)
 packageFile :: Path.FilePath
 packageFile = "psc-package.json"
 
+localPackageSet :: Path.FilePath
+localPackageSet = "packages.json"
+
 data PackageConfig = PackageConfig
   { name    :: PackageName
   , depends :: [PackageName]
@@ -152,6 +155,10 @@ getPackageSet PackageConfig{ source, set } = do
 readPackageSet :: PackageConfig -> IO PackageSet
 readPackageSet PackageConfig{ set } = do
   let dbFile = ".psc-package" </> fromText set </> ".set" </> "packages.json"
+  handleReadPackageSet dbFile
+
+handleReadPackageSet :: Path.FilePath -> IO PackageSet
+handleReadPackageSet dbFile = do
   exists <- testfile dbFile
   unless exists $ exitWithErr $ format (fp%" does not exist") dbFile
   mdb <- Aeson.eitherDecodeStrict . encodeUtf8 <$> readTextFile dbFile
@@ -163,6 +170,12 @@ writePackageSet :: PackageConfig -> PackageSet -> IO ()
 writePackageSet PackageConfig{ set } =
   let dbFile = ".psc-package" </> fromText set </> ".set" </> "packages.json"
   in writeTextFile dbFile . packageSetToJSON
+
+readLocalPackageSet :: IO PackageSet
+readLocalPackageSet = handleReadPackageSet localPackageSet
+
+writeLocalPackageSet :: PackageSet -> IO ()
+writeLocalPackageSet = writeTextFile localPackageSet . packageSetToJSON
 
 performInstall :: Text -> PackageName -> PackageInfo -> IO Turtle.FilePath
 performInstall set pkgName PackageInfo{ repo, version } = do
@@ -518,6 +531,10 @@ addFromBower name = do
     stripBowerNamePrefix s = fromMaybe s $ T.stripPrefix "purescript-" s
     mkPackageName' = Bifunctor.first show . mkPackageName . stripBowerNamePrefix
 
+formatPackageFile :: IO ()
+formatPackageFile =
+    readLocalPackageSet >>= writeLocalPackageSet
+
 main :: IO ()
 main = do
     IO.hSetEncoding IO.stdout IO.utf8
@@ -585,6 +602,9 @@ main = do
         , Opts.command "add-from-bower"
             (Opts.info (addFromBower <$> pkg Opts.<**> Opts.helper)
             (Opts.progDesc "Add a package from the Bower registry to the package set. This requires Bower to be installed on your system."))
+        , Opts.command "format"
+            (Opts.info (pure formatPackageFile)
+            (Opts.progDesc "Format the packages.json file for consistency"))
         ]
       where
         pkg = Opts.strArgument $
