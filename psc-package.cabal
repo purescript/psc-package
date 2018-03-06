@@ -1,5 +1,5 @@
 name:                psc-package
-version:             0.2.0
+version:             0.3.1
 synopsis:            An experimental package manager for PureScript
 description:
 homepage:            https://github.com/purescript/psc-package
@@ -17,7 +17,7 @@ executable psc-package
     build-depends: base >=4 && <5,
                    aeson -any,
                    aeson-pretty -any,
-                   async -any,
+                   async >= 2.1.1,
                    bytestring -any,
                    containers -any,
                    foldl -any,
