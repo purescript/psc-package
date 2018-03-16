@@ -103,7 +103,7 @@ Please note that your package will be removed from the set if it is not kept up 
 
 Adding a package is a manual process right now. We would like to add commands to make this process simpler, but for now, please follow these steps:
 
-- go to the [package-sets repository](https://github.com/purescript/psc-package) and fork the repository.
+- go to the [package-sets repository](https://github.com/purescript/package-sets) and fork the repository.
 - open the `packages.json` file and make a new entry to add your package, copying the format used for existing packages. The key will be the package name without the preceding `purescript-` as in Bower packages. It should have three fields defined:
 
 * `dependencies` - a list of the dependencies used for this package
