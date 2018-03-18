@@ -17,7 +17,7 @@ import           Data.Aeson.Encode.Pretty
 import           Data.Foldable (fold, foldMap, traverse_)
 import qualified Data.Bifunctor as Bifunctor
 import qualified Data.Graph as G
-import           Data.List (maximumBy, nub)
+import           Data.List (maximumBy)
 import qualified Data.List as List
 import qualified Data.Map as Map
 import           Data.Maybe (fromMaybe, mapMaybe)
@@ -92,6 +92,7 @@ packageConfigToJSON =
                             , "depends"
                             ]
                , confIndent = Spaces 2
+               , confTrailingNewline = True
                }
 
 packageSetToJSON :: PackageSet -> Text
@@ -100,7 +101,11 @@ packageSetToJSON =
     . TB.toLazyText
     . encodePrettyToTextBuilder' config
   where
-    config = defConfig { confCompare = compare, confIndent = Spaces 2 }
+    config = defConfig
+               { confCompare = compare
+               , confIndent = Spaces 2
+               , confTrailingNewline = True
+               }
 
 writePackageFile :: PackageConfig -> IO ()
 writePackageFile =
@@ -188,7 +193,7 @@ performInstall set pkgName PackageInfo{ repo, version } = do
 
 getReverseDeps  :: PackageSet -> PackageName -> IO [(PackageName, PackageInfo)]
 getReverseDeps db dep =
-    nub <$> foldMap go (Map.toList db)
+    List.nub <$> foldMap go (Map.toList db)
   where
     go pair@(packageName, PackageInfo {dependencies}) =
       case List.find (== dep) dependencies of
@@ -270,7 +275,7 @@ install pkgName' = do
       echoT "Install complete"
     Just str -> do
       pkgName <- packageNameFromString str
-      let pkg' = pkg { depends = nub (pkgName : depends pkg) }
+      let pkg' = pkg { depends = List.nub (pkgName : depends pkg) }
       updateAndWritePackageFile pkg'
 
 uninstall :: String -> IO ()
