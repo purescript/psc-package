@@ -10,7 +10,7 @@
 module Main where
 
 import qualified Control.Foldl as Foldl
-import           Control.Concurrent.Async (forConcurrently_)
+import           Control.Concurrent.Async (forConcurrently_, mapConcurrently)
 import qualified Data.Aeson as Aeson
 import           Data.Aeson.Types (fieldLabelModifier)
 import           Data.Aeson.Encode.Pretty
@@ -485,7 +485,7 @@ verify arg = do
             Just pkgInfo -> performInstall (set pkg) pkgName pkgInfo
       echoT ("Verifying package " <> runPackageName name)
       dependencies <- map fst <$> getTransitiveDeps db [name]
-      dirs <- traverse dirFor dependencies
+      dirs <- mapConcurrently dirFor dependencies
       let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs"))) dirs
       procs "purs" ("compile" : srcGlobs) empty
 
