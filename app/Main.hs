@@ -474,17 +474,19 @@ verify arg = do
     verifyPackages names db pkg = do
       echoT $ "Verifying " <> pack (show $ length names) <> " packages."
       echoT "Warning: this could take some time!"
+      traverse_ (verifyPackage db pkg) names
 
-      let go (name_, pkgInfo) = (name_, ) <$> performInstall (set pkg) name_ pkgInfo
-      paths <- Map.fromList <$> traverse go (Map.toList db)
-      traverse_ (verifyPackage db paths) names
-
-    verifyPackage :: PackageSet -> Map.Map PackageName Turtle.FilePath -> PackageName -> IO ()
-    verifyPackage db paths name = do
-      let dirFor pkgName = fromMaybe (error ("verifyPackageSet: no directory for " <> show pkgName)) (Map.lookup pkgName paths)
+    verifyPackage :: PackageSet -> PackageConfig -> PackageName -> IO ()
+    verifyPackage db pkg name = do
+      let
+        dirFor pkgName =
+          case Map.lookup pkgName db of
+            Nothing -> error ("verifyPackageSet: no directory for " <> show pkgName)
+            Just pkgInfo -> performInstall (set pkg) pkgName pkgInfo
       echoT ("Verifying package " <> runPackageName name)
       dependencies <- map fst <$> getTransitiveDeps db [name]
-      let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs")) . dirFor) dependencies
+      dirs <- traverse dirFor dependencies
+      let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs"))) dirs
       procs "purs" ("compile" : srcGlobs) empty
 
 data BowerInfoRepo = BowerInfoRepo
