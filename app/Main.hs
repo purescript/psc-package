@@ -522,9 +522,8 @@ addFromBower name = do
               )
       case result' of
         Right (pkgName, info) -> do
-          pkg <- readPackageFile
-          db <- readPackageSet pkg
-          writePackageSet pkg $ Map.insert pkgName info db
+          db <- readLocalPackageSet
+          writeLocalPackageSet $ Map.insert pkgName info db
           echoT $ "Successfully wrote " <> runPackageName pkgName <> " to package set."
         Left errors -> echoT $ "Errors processing Bower Info: " <> (T.pack errors)
   where
