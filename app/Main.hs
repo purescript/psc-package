@@ -523,7 +523,7 @@ addFromBower name = do
             pure $
               ( pkgName
               , PackageInfo
-                (url $ bower_repository bowerInfo)
+                (T.replace "git:" "https:" . url $ bower_repository bowerInfo)
                 ("v" <> bower_version bowerInfo)
                 packageNames
               )
