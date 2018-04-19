@@ -4,6 +4,8 @@
 
 `psc-package` is an executable which helps manage PureScript dependencies via Git. It can be used directly, but it is also designed to be used by external tools.
 
+**See the [FAQ](#faq) section below for common troubleshooting questions.**
+
 ## Installation
 
 - Download the binary for your platform from [the releases page](https://github.com/purescript/psc-package/releases), and copy it somewhere on your PATH, or
@@ -147,6 +149,10 @@ psc-package add-from-bower <purescript-something>
 ```
 
 ## FAQ
+
+### How come I can't install (some package) from the package set?
+
+You should make sure you're using the correct [package-set release](https://github.com/purescript/package-sets/releases) and have updated the value of "set" in your `psc-package.json` file. See [The `psc-package.json` format](https://github.com/purescript/psc-package#the-psc-packagejson-format) section for more details.
 
 ### Can I add a dependency which is not in the package set?
 
