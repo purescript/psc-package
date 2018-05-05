@@ -14,6 +14,7 @@ import           Control.Concurrent.Async (forConcurrently_, mapConcurrently)
 import qualified Data.Aeson as Aeson
 import           Data.Aeson.Types (fieldLabelModifier)
 import           Data.Aeson.Encode.Pretty
+import           Control.Arrow (second)
 import           Data.Foldable (fold, foldMap, traverse_)
 import qualified Data.Bifunctor as Bifunctor
 import qualified Data.Graph as G
@@ -497,7 +498,7 @@ data BowerInfo = BowerInfo
   { bower_name         :: Text
   , bower_repository   :: BowerInfoRepo
   , bower_dependencies :: Map.Map Text Text
-  , bower_version      :: Text
+  , bower_version      :: Maybe Text
   } deriving (Show, Eq, Generic)
 instance Aeson.FromJSON BowerInfo where
   parseJSON = Aeson.genericParseJSON Aeson.defaultOptions
@@ -509,22 +510,26 @@ data BowerOutput = BowerOutput
   } deriving (Show, Eq, Generic, Aeson.FromJSON)
 
 addFromBower :: String -> IO ()
-addFromBower name = do
-  let bowerProc = inproc "bower" [ "info", T.pack name, "--json", "-l=error" ] empty
+addFromBower specifier = do
+  let (name, version) = unpackSpecifier $ T.pack specifier
+  echoT $ "Adding package " <> name <> " at " <> (fromMaybe "latest" version) <> " from Bower..."
+  let bowerProc = inproc "bower" [ "info", T.pack specifier, "--json", "-l=error" ] empty
   result <- fold <$> shellToIOText bowerProc
   if T.null result
     then exitWithErr "Error: Does the package exist on Bower?"
     else do
       let result' = do
-            bowerOutput <- Aeson.eitherDecodeStrict $ encodeUtf8 result
-            let bowerInfo = latest bowerOutput
+            bowerInfo <- case version of
+              Just _ -> Aeson.eitherDecodeStrict (encodeUtf8 result) :: Either String BowerInfo
+              Nothing -> latest <$> Aeson.eitherDecodeStrict (encodeUtf8 result) :: Either String BowerInfo
+            version' <- maybeE "Unable to infer the package version" $ ("v" <>) <$> bower_version bowerInfo <|> version
             pkgName <- mkPackageName' $ bower_name bowerInfo
             packageNames <- traverse mkPackageName' $ Map.keys (bower_dependencies bowerInfo)
             pure $
               ( pkgName
               , PackageInfo
                 (T.replace "git:" "https:" . url $ bower_repository bowerInfo)
-                ("v" <> bower_version bowerInfo)
+                version'
                 packageNames
               )
       case result' of
@@ -536,6 +541,14 @@ addFromBower name = do
   where
     stripBowerNamePrefix s = fromMaybe s $ T.stripPrefix "purescript-" s
     mkPackageName' = Bifunctor.first show . mkPackageName . stripBowerNamePrefix
+    unpackSpecifier = second textToMaybe . T.breakOn "#"
+
+maybeE :: b -> Maybe a -> Either b a
+maybeE b = maybe (Left b) Right
+
+textToMaybe :: Text -> Maybe Text
+textToMaybe "" = Nothing
+textToMaybe t = Just t
 
 formatPackageFile :: IO ()
 formatPackageFile =
