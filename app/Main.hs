@@ -541,7 +541,7 @@ addFromBower specifier = do
   where
     stripBowerNamePrefix s = fromMaybe s $ T.stripPrefix "purescript-" s
     mkPackageName' = Bifunctor.first show . mkPackageName . stripBowerNamePrefix
-    unpackSpecifier = second textToMaybe . T.breakOn "#"
+    unpackSpecifier = second (fmap T.tail . textToMaybe) . T.breakOn "#"
 
 maybeE :: b -> Maybe a -> Either b a
 maybeE b = maybe (Left b) Right
