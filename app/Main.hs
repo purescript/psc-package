@@ -15,7 +15,6 @@ import           Control.Error.Util (note)
 import qualified Data.Aeson as Aeson
 import           Data.Aeson.Types (fieldLabelModifier)
 import           Data.Aeson.Encode.Pretty
-import           Control.Arrow (second)
 import           Data.Foldable (fold, foldMap, traverse_)
 import qualified Data.Bifunctor as Bifunctor
 import qualified Data.Graph as G
@@ -542,7 +541,7 @@ addFromBower specifier = do
   where
     stripBowerNamePrefix s = fromMaybe s $ T.stripPrefix "purescript-" s
     mkPackageName' = Bifunctor.first show . mkPackageName . stripBowerNamePrefix
-    unpackSpecifier = second (fmap T.tail . textToMaybe) . T.breakOn "#"
+    unpackSpecifier = Bifunctor.second (fmap T.tail . textToMaybe) . T.breakOn "#"
 
 textToMaybe :: Text -> Maybe Text
 textToMaybe "" = Nothing
