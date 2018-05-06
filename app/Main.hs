@@ -11,6 +11,7 @@ module Main where
 
 import qualified Control.Foldl as Foldl
 import           Control.Concurrent.Async (forConcurrently_, mapConcurrently)
+import           Control.Error.Util (note)
 import qualified Data.Aeson as Aeson
 import           Data.Aeson.Types (fieldLabelModifier)
 import           Data.Aeson.Encode.Pretty
@@ -522,7 +523,7 @@ addFromBower specifier = do
             bowerInfo <- case version of
               Just _ -> Aeson.eitherDecodeStrict (encodeUtf8 result) :: Either String BowerInfo
               Nothing -> latest <$> Aeson.eitherDecodeStrict (encodeUtf8 result) :: Either String BowerInfo
-            version' <- maybeE "Unable to infer the package version" $ ("v" <>) <$> bower_version bowerInfo <|> version
+            version' <- note "Unable to infer the package version" $ ("v" <>) <$> bower_version bowerInfo <|> version
             pkgName <- mkPackageName' $ bower_name bowerInfo
             packageNames <- traverse mkPackageName' $ Map.keys (bower_dependencies bowerInfo)
             pure $
@@ -542,9 +543,6 @@ addFromBower specifier = do
     stripBowerNamePrefix s = fromMaybe s $ T.stripPrefix "purescript-" s
     mkPackageName' = Bifunctor.first show . mkPackageName . stripBowerNamePrefix
     unpackSpecifier = second (fmap T.tail . textToMaybe) . T.breakOn "#"
-
-maybeE :: b -> Maybe a -> Either b a
-maybeE b = maybe (Left b) Right
 
 textToMaybe :: Text -> Maybe Text
 textToMaybe "" = Nothing

@@ -25,6 +25,7 @@ executable psc-package
                    process -any,
                    system-filepath -any,
                    text -any,
+                   errors -any,
                    turtle <1.6
     main-is: Main.hs
     other-modules: Paths_psc_package
