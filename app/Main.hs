@@ -510,10 +510,9 @@ data BowerOutput = BowerOutput
   } deriving (Show, Eq, Generic, Aeson.FromJSON)
 
 addFromBower :: String -> IO ()
-addFromBower specifier = do
-  let (name, version) = unpackSpecifier $ T.pack specifier
+addFromBower arg = do
   echoT $ "Adding package " <> name <> " at " <> (fromMaybe "latest" version) <> " from Bower..."
-  let bowerProc = inproc "bower" [ "info", T.pack specifier, "--json", "-l=error" ] empty
+  let bowerProc = inproc "bower" [ "info", T.pack arg, "--json", "-l=error" ] empty
   result <- fold <$> shellToIOText bowerProc
   if T.null result
     then exitWithErr "Error: Does the package exist on Bower?"
@@ -541,11 +540,10 @@ addFromBower specifier = do
   where
     stripBowerNamePrefix s = fromMaybe s $ T.stripPrefix "purescript-" s
     mkPackageName' = Bifunctor.first show . mkPackageName . stripBowerNamePrefix
-    unpackSpecifier = Bifunctor.second (fmap T.tail . textToMaybe) . T.breakOn "#"
-
-textToMaybe :: Text -> Maybe Text
-textToMaybe "" = Nothing
-textToMaybe t = Just t
+    parseVersion' s = case s of
+      "" -> Nothing
+      s' -> Just $ T.tail s'
+    (name, version) = Bifunctor.second parseVersion' $ T.breakOn "#" $ T.pack arg
 
 formatPackageFile :: IO ()
 formatPackageFile =
