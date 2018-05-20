@@ -193,15 +193,18 @@ performInstall set pkgName PackageInfo{ repo, version } = do
   pure pkgDir
 
 getReverseDeps  :: PackageSet -> PackageName -> IO [(PackageName, PackageInfo)]
-getReverseDeps db dep =
-    List.nub <$> foldMap go (Map.toList db)
+getReverseDeps = getReverseDeps' Set.empty
   where
-    go pair@(packageName, PackageInfo {dependencies}) =
-      case List.find (== dep) dependencies of
-        Nothing -> return mempty
-        Just _ -> do
-          innerDeps <- getReverseDeps db packageName
-          return $ pair : innerDeps
+    getReverseDeps' seen db dep = List.nub <$> foldMap (go seen db dep) (Map.toList db)
+    go seen db dep pair@(packageName, PackageInfo {dependencies})
+      | packageName `Set.member` seen =
+          exitWithErr ("Cycle in package dependencies at package " <> runPackageName packageName)
+      | otherwise =
+        case List.find (== dep) dependencies of
+          Nothing -> return mempty
+          Just _ -> do
+            innerDeps <- getReverseDeps' (Set.insert packageName seen) db packageName
+            return $ pair : innerDeps
 
 getTransitiveDeps :: PackageSet -> [PackageName] -> IO [(PackageName, PackageInfo)]
 getTransitiveDeps db deps =
