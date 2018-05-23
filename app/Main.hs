@@ -500,7 +500,7 @@ data BowerInfoRepo = BowerInfoRepo
 data BowerInfo = BowerInfo
   { bower_name         :: Text
   , bower_repository   :: BowerInfoRepo
-  , bower_dependencies :: Map.Map Text Text
+  , bower_dependencies :: Maybe (Map.Map Text Text)
   , bower_version      :: Maybe Text
   } deriving (Show, Eq, Generic)
 instance Aeson.FromJSON BowerInfo where
@@ -526,7 +526,7 @@ addFromBower arg = do
               Nothing -> latest <$> Aeson.eitherDecodeStrict (encodeUtf8 result) :: Either String BowerInfo
             version' <- note "Unable to infer the package version" $ ("v" <>) <$> bower_version bowerInfo <|> version
             pkgName <- mkPackageName' $ bower_name bowerInfo
-            packageNames <- traverse mkPackageName' $ Map.keys (bower_dependencies bowerInfo)
+            packageNames <- traverse mkPackageName' $ Map.keys (fromMaybe Map.empty $ bower_dependencies bowerInfo)
             pure $
               ( pkgName
               , PackageInfo
