@@ -11,6 +11,12 @@
 - Download the binary for your platform from [the releases page](https://github.com/purescript/psc-package/releases), and copy it somewhere on your PATH, or
 - Build from source, using `stack install`.
 
+If you're a **Windows Chocolatey** user, then you can install `psc-package` from the [official repo](https://chocolatey.org/packages/psc-package):
+
+```
+$ choco install psc-package
+```
+
 ## Usage
 
 ```shell
