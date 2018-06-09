@@ -84,6 +84,7 @@ packageConfigToJSON =
     TL.toStrict
     . TB.toLazyText
     . encodePrettyToTextBuilder' config
+    . sortDependencies
   where
     config = defConfig
                { confCompare =
@@ -95,18 +96,23 @@ packageConfigToJSON =
                , confIndent = Spaces 2
                , confTrailingNewline = True
                }
+    sortDependencies conf = conf { depends = List.sort (depends conf) }
 
 packageSetToJSON :: PackageSet -> Text
 packageSetToJSON =
     TL.toStrict
     . TB.toLazyText
     . encodePrettyToTextBuilder' config
+    . sortDependencies
   where
     config = defConfig
                { confCompare = compare
                , confIndent = Spaces 2
                , confTrailingNewline = True
                }
+    sortDependencies set = updateDependencies <$> set
+    updateDependencies pkg =
+      pkg { dependencies = List.sort (dependencies pkg) }
 
 writePackageFile :: PackageConfig -> IO ()
 writePackageFile =
