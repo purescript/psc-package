@@ -69,7 +69,7 @@ Here is a simple project configuration:
 It defines:
 
 - The project name
-- The package set to use to resolve dependencies (this corresponds to a branch or tag of the package set source repository)
+- The package set to use to resolve dependencies (this corresponds to a SHA or tag of the package set source repository)
 - The package set source repository Git URL (change this if you want to host your own package sets)
 - Any dependencies of the project, as a list of names of packages from the package set
 

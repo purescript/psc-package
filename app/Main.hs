@@ -61,7 +61,7 @@ data PackageConfig = PackageConfig
   { name    :: PackageName
   , depends :: [PackageName]
   , set     :: Text
-  , source  :: Text
+  , source  :: Repo
   } deriving (Show, Generic, Aeson.FromJSON, Aeson.ToJSON)
 
 pathToTextUnsafe :: Turtle.FilePath -> Text
@@ -120,49 +120,97 @@ writePackageFile =
   . packageConfigToJSON
 
 data PackageInfo = PackageInfo
-  { repo         :: Text
+  { repo         :: Repo
   , version      :: Text
   , dependencies :: [PackageName]
   } deriving (Show, Eq, Generic, Aeson.FromJSON, Aeson.ToJSON)
 
 type PackageSet = Map.Map PackageName PackageInfo
 
-cloneShallow
+newtype Repo = Repo { unRepo :: Text } deriving (Show, Eq)
+
+instance Aeson.FromJSON Repo where
+  parseJSON = fmap Repo . Aeson.parseJSON
+
+
+instance Aeson.ToJSON Repo where
+  toJSON = Aeson.toJSON . unRepo
+
+
+data CloneTarget = CloneTag Text
+                 | CloneSHA Text
+                 deriving (Show)
+
+
+-- | Parses "sha:somesha", "tag:sometag", and "sometag" without a
+-- schema as a tag.
+parseCloneTarget
   :: Text
+  -> Either Text CloneTarget
+parseCloneTarget t =
+  if T.null remainder
+     then Right (CloneTag t)
+     else case T.toLower schemeName of
+      "sha" -> Right (CloneSHA withoutScheme)
+      "tag" -> Right (CloneTag withoutScheme)
+      _ -> Left ("Invalid scheme. Expected sha: | tag: but got " <> schemeName)
+  where
+    (schemeName, remainder) = T.breakOn ":" t
+    withoutScheme = T.drop 1 remainder
+
+
+-- Both tags and SHAs can be treated as immutable so we only have to run this once
+cloneShallow
+  :: Repo
   -- ^ repo
-  -> Text
-  -- ^ branch/tag
+  -> CloneTarget
+  -- ^ tag/SHA
   -> Turtle.FilePath
   -- ^ target directory
-  -> IO ExitCode
-cloneShallow from ref into =
-  proc "git"
-       [ "clone"
-       , "-q"
-       , "-c", "advice.detachedHead=false"
-       , "--depth", "1"
-       , "-b", ref
-       , from
-       , pathToTextUnsafe into
-       ] empty .||. exit (ExitFailure 1)
+  -> IO ()
+cloneShallow (Repo from) tgt into = do
+  void $ proc "git"
+               [ "clone"
+               , "-q"
+               , "-c", "advice.detachedHead=false"
+               , "--no-checkout"
+               , "-b", tgtText
+               , from
+               , pathToTextUnsafe into
+               ] empty .||. exit (ExitFailure 1)
+  case tgt of
+    CloneSHA sha ->
+      inGitRepo $ void $ proc "git"
+                             [ "checkout"
+                             , "-q"
+                             , "-c", "advice.detachedHead=false"
+                             , "--no-checkout"
+                             , sha
+                             ] empty .||. exit (ExitFailure 1)
+    CloneTag _ -> return ()
+  where
+    inGitRepo m = sh (pushd into >> m)
+    tgtText = case tgt of
+      CloneTag t -> t
+      CloneSHA t -> t
 
 listRemoteTags
-  :: Text
+  :: Repo
   -- ^ repo
   -> Turtle.Shell Text
-listRemoteTags from = let gitProc = inproc "git"
-                                    [ "ls-remote"
-                                    , "-q"
-                                    , "-t"
-                                    , from
-                                    ] empty
-                      in lineToText <$> gitProc
+listRemoteTags (Repo from) = let gitProc = inproc "git"
+                                         [ "ls-remote"
+                                         , "-q"
+                                         , "-t"
+                                         , from
+                                         ] empty
+                           in lineToText <$> gitProc
 
 getPackageSet :: PackageConfig -> IO ()
 getPackageSet PackageConfig{ source, set } = do
   let pkgDir = ".psc-package" </> fromText set </> ".set"
   exists <- testdir pkgDir
-  unless exists . void $ cloneShallow source set pkgDir
+  unless exists . void $ cloneShallow source (CloneTag set) pkgDir
 
 readPackageSet :: PackageConfig -> IO PackageSet
 readPackageSet PackageConfig{ set } = do
@@ -192,11 +240,14 @@ writeLocalPackageSet = writeTextFile localPackageSet . packageSetToJSON
 performInstall :: Text -> PackageName -> PackageInfo -> IO Turtle.FilePath
 performInstall set pkgName PackageInfo{ repo, version } = do
   let pkgDir = ".psc-package" </> fromText set </> fromText (runPackageName pkgName) </> fromText version
-  exists <- testdir pkgDir
-  unless exists . void $ do
-    echoT ("Installing " <> runPackageName pkgName)
-    cloneShallow repo version pkgDir
-  pure pkgDir
+  case parseCloneTarget version of
+    Left parseError -> exitWithErr parseError
+    Right target -> do
+      exists <- testdir pkgDir
+      unless exists . void $ do
+        echoT ("Installing " <> runPackageName pkgName)
+        cloneShallow repo target pkgDir
+      pure pkgDir
 
 getReverseDeps  :: PackageSet -> PackageName -> IO [(PackageName, PackageInfo)]
 getReverseDeps db dep =
@@ -243,7 +294,7 @@ getPureScriptVersion = do
       | otherwise -> exitWithErr "Unable to parse output of purs --version"
     _ -> exitWithErr "Unexpected output from purs --version"
 
-initialize :: Maybe (Text, Maybe Text) -> IO ()
+initialize :: Maybe (Text, Maybe Repo) -> IO ()
 initialize setAndSource = do
     exists <- testfile "psc-package.json"
     when exists $ exitWithErr "psc-package.json already exists"
@@ -257,13 +308,13 @@ initialize setAndSource = do
         echoT "(Use --source / --set to override this behavior)"
         pure PackageConfig { name    = pkgName
                            , depends = [ preludePackageName ]
-                           , source  = "https://github.com/purescript/package-sets.git"
+                           , source  = Repo "https://github.com/purescript/package-sets.git"
                            , set     = "psc-" <> pack (showVersion pursVersion)
                            }
       Just (set, source) ->
         pure PackageConfig { name    = pkgName
                            , depends = [ preludePackageName ]
-                           , source  = fromMaybe "https://github.com/purescript/package-sets.git" source
+                           , source  = fromMaybe (Repo "https://github.com/purescript/package-sets.git") source
                            , set
                            }
 
@@ -320,17 +371,17 @@ listPackages sorted = do
     then traverse_ echoT (fmt <$> inOrder (Map.assocs db))
     else traverse_ echoT (fmt <$> Map.assocs db)
   where
-  fmt :: (PackageName, PackageInfo) -> Text
-  fmt (name, PackageInfo{ version, repo }) =
-    runPackageName name <> " (" <> version <> ", " <> repo <> ")"
+    fmt :: (PackageName, PackageInfo) -> Text
+    fmt (name, PackageInfo{ version, repo }) =
+      runPackageName name <> " (" <> version <> ", " <> unRepo repo <> ")"
 
-  inOrder xs = fromNode . fromVertex <$> vs where
-    (gr, fromVertex) =
-      G.graphFromEdges' [ (pkg, name, dependencies pkg)
-                        | (name, pkg) <- xs
-                        ]
-    vs = G.topSort (G.transposeG gr)
-    fromNode (pkg, name, _) = (name, pkg)
+    inOrder xs = fromNode . fromVertex <$> vs where
+      (gr, fromVertex) =
+        G.graphFromEdges' [ (pkg, name, dependencies pkg)
+                          | (name, pkg) <- xs
+                          ]
+      vs = G.topSort (G.transposeG gr)
+      fromNode (pkg, name, _) = (name, pkg)
 
 getSourcePaths :: PackageConfig -> PackageSet -> [PackageName] -> IO [Turtle.FilePath]
 getSourcePaths PackageConfig{..} db pkgNames = do
@@ -497,7 +548,7 @@ verify arg = do
       procs "purs" ("compile" : srcGlobs) empty
 
 data BowerInfoRepo = BowerInfoRepo
-  { url :: Text
+  { url :: Repo
   } deriving (Show, Eq, Generic, Aeson.FromJSON)
 
 data BowerInfo = BowerInfo
@@ -580,7 +631,7 @@ main = do
     commands = (Opts.subparser . fold)
         [ Opts.command "init"
             (Opts.info (initialize <$> optional ((,) <$> (fromString <$> set)
-                                                     <*> optional (fromString <$> source))
+                                                     <*> optional (Repo . fromString <$> source))
                                    Opts.<**> Opts.helper)
             (Opts.progDesc "Create a new psc-package.json file"))
         , Opts.command "uninstall"
