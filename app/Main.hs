@@ -11,12 +11,9 @@ module Main where
 
 import qualified Control.Foldl as Foldl
 import           Control.Concurrent.Async (forConcurrently_, mapConcurrently)
-import           Control.Error.Util (note)
 import qualified Data.Aeson as Aeson
-import           Data.Aeson.Types (fieldLabelModifier)
 import           Data.Aeson.Encode.Pretty
 import           Data.Foldable (fold, foldMap, traverse_)
-import qualified Data.Bifunctor as Bifunctor
 import qualified Data.Graph as G
 import           Data.List (maximumBy)
 import qualified Data.List as List
@@ -496,61 +493,6 @@ verify arg = do
       let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs"))) dirs
       procs "purs" ("compile" : srcGlobs) empty
 
-data BowerInfoRepo = BowerInfoRepo
-  { url :: Text
-  } deriving (Show, Eq, Generic, Aeson.FromJSON)
-
-data BowerInfo = BowerInfo
-  { bower_name         :: Text
-  , bower_repository   :: BowerInfoRepo
-  , bower_dependencies :: Maybe (Map.Map Text Text)
-  , bower_version      :: Maybe Text
-  } deriving (Show, Eq, Generic)
-instance Aeson.FromJSON BowerInfo where
-  parseJSON = Aeson.genericParseJSON Aeson.defaultOptions
-    { fieldLabelModifier = drop 6
-    }
-
-data BowerOutput = BowerOutput
-  { latest :: BowerInfo
-  } deriving (Show, Eq, Generic, Aeson.FromJSON)
-
-addFromBower :: String -> IO ()
-addFromBower arg = do
-  echoT $ "Adding package " <> name <> " at " <> (fromMaybe "latest" version) <> " from Bower..."
-  let bowerProc = inproc "bower" [ "info", T.pack arg, "--json", "-l=error" ] empty
-  result <- fold <$> shellToIOText bowerProc
-  if T.null result
-    then exitWithErr "Error: Does the package exist on Bower?"
-    else do
-      let result' = do
-            bowerInfo <- case version of
-              Just _ -> Aeson.eitherDecodeStrict (encodeUtf8 result) :: Either String BowerInfo
-              Nothing -> latest <$> Aeson.eitherDecodeStrict (encodeUtf8 result) :: Either String BowerInfo
-            version' <- note "Unable to infer the package version" $ ("v" <>) <$> bower_version bowerInfo <|> version
-            pkgName <- mkPackageName' $ bower_name bowerInfo
-            packageNames <- traverse mkPackageName' $ Map.keys (fromMaybe Map.empty $ bower_dependencies bowerInfo)
-            pure $
-              ( pkgName
-              , PackageInfo
-                (T.replace "git:" "https:" . url $ bower_repository bowerInfo)
-                version'
-                packageNames
-              )
-      case result' of
-        Right (pkgName, info) -> do
-          db <- readLocalPackageSet
-          writeLocalPackageSet $ Map.insert pkgName info db
-          echoT $ "Successfully wrote " <> runPackageName pkgName <> " to package set."
-        Left errors -> echoT $ "Errors processing Bower Info: " <> (T.pack errors)
-  where
-    stripBowerNamePrefix s = fromMaybe s $ T.stripPrefix "purescript-" s
-    mkPackageName' = Bifunctor.first show . mkPackageName . stripBowerNamePrefix
-    parseVersion' s = case s of
-      "" -> Nothing
-      s' -> Just $ T.tail s'
-    (name, version) = Bifunctor.second parseVersion' $ T.breakOn "#" $ T.pack arg
-
 formatPackageFile :: IO ()
 formatPackageFile =
     readLocalPackageSet >>= writeLocalPackageSet
@@ -619,9 +561,6 @@ main = do
                          <|> (VerifyAll <$> optional (fromString <$> after)))
                         Opts.<**> Opts.helper)
             (Opts.progDesc "Verify that the named package builds correctly. If no package is specified, verify that all packages in the package set build correctly."))
-        , Opts.command "add-from-bower"
-            (Opts.info (addFromBower <$> pkg Opts.<**> Opts.helper)
-            (Opts.progDesc "Add a package from the Bower registry to the package set. This requires Bower to be installed on your system."))
         , Opts.command "format"
             (Opts.info (pure formatPackageFile)
             (Opts.progDesc "Format the packages.json file for consistency"))

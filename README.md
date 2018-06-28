@@ -146,14 +146,6 @@ Similar to the above, you will need to do the setup. You can then modify the ver
 
 Then you can make a pull request. Again, once Travis verifies your change, we will merge it into `master` and your change will be available in the next tag.
 
-### Add a package from Bower
-
-If you have Bower installed on your system, you can easily add a package from Bower to the package set. Use the Bower package name to add the package using the `add-from-bower` command:
-
-```
-psc-package add-from-bower <purescript-something>
-```
-
 ## FAQ
 
 ### How come I can't install (some package) from the package set?
