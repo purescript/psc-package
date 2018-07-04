@@ -122,7 +122,7 @@ Adding a package is a manual process right now. We would like to add commands to
 
 First, you will need to create an empty `psc-package.json` to test the package set in use.
 
-`echo '{ "name": "", "set": "testing", "source": "", "depends": [] }' > psc-package.json`
+`echo '{ "name": "test", "set": "testing", "source": "", "depends": [] }' > psc-package.json`
 
 Make the required directory structure for the package sets:
 
