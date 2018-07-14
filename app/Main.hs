@@ -216,10 +216,23 @@ getTransitiveDeps db deps =
       | otherwise =
         case Map.lookup pkg db of
           Nothing ->
-            exitWithErr ("Package " <> runPackageName pkg <> " does not exist in package set")
+            exitWithErr (pkgNotFoundMsg pkg)
           Just info@PackageInfo{ dependencies } -> do
             m <- fold <$> traverse (go (Set.insert pkg seen)) dependencies
             return (Map.insert pkg info m)
+
+    pkgNotFoundMsg pkg =
+      "Package `" <> runPackageName pkg <> "` does not exist in package set" <> extraHelp
+      where
+        extraHelp = case suggestedPkg of
+          Just pkg' -> " (did you mean `" <> runPackageName pkg' <> "` instead?)"
+          Nothing -> ""
+
+        suggestedPkg = do
+          sansPrefix <- T.stripPrefix "purescript-" (runPackageName pkg)
+          case mkPackageName sansPrefix of
+            Right pkg' | Map.member pkg' db -> Just pkg'
+            _ -> Nothing
 
 installImpl :: PackageConfig -> IO ()
 installImpl config@PackageConfig{ depends } = do
