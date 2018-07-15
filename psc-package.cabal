@@ -20,6 +20,7 @@ executable psc-package
                    async >= 2.1.1,
                    bytestring -any,
                    containers -any,
+                   either -any,
                    foldl -any,
                    optparse-applicative -any,
                    process -any,

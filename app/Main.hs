@@ -13,6 +13,7 @@ import qualified Control.Foldl as Foldl
 import           Control.Concurrent.Async (forConcurrently_, mapConcurrently)
 import qualified Data.Aeson as Aeson
 import           Data.Aeson.Encode.Pretty
+import           Data.Either.Combinators (rightToMaybe)
 import           Data.Foldable (fold, foldMap, traverse_)
 import qualified Data.Graph as G
 import           Data.List (maximumBy)
@@ -225,14 +226,16 @@ getTransitiveDeps db deps =
       "Package `" <> runPackageName pkg <> "` does not exist in package set" <> extraHelp
       where
         extraHelp = case suggestedPkg of
-          Just pkg' -> " (did you mean `" <> runPackageName pkg' <> "` instead?)"
-          Nothing -> ""
+          Just pkg' | Map.member pkg' db ->
+            " (but `" <> runPackageName pkg' <> "` does, did you mean that instead?)"
+          Just pkg' ->
+            " (and nor does `" <> runPackageName pkg' <> "`)"
+          Nothing ->
+            ""
 
         suggestedPkg = do
           sansPrefix <- T.stripPrefix "purescript-" (runPackageName pkg)
-          case mkPackageName sansPrefix of
-            Right pkg' | Map.member pkg' db -> Just pkg'
-            _ -> Nothing
+          rightToMaybe (mkPackageName sansPrefix)
 
 installImpl :: PackageConfig -> IO ()
 installImpl config@PackageConfig{ depends } = do
