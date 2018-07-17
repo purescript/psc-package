@@ -1,4 +1,4 @@
-package = encoder
+package = psc-package
 
 stack_yaml = STACK_YAML="stack.yaml"
 stack = $(stack_yaml) stack
@@ -16,7 +16,7 @@ install:
 	$(stack) install
 
 ghci:
-	$(stack) ghci $(package):lib
+	$(stack) ghci $(package)
 
 test:
 	$(stack) test $(package)
@@ -28,7 +28,7 @@ bench:
 	$(stack) bench $(package)
 
 ghcid:
-	$(stack) exec -- ghcid -c "stack ghci $(package):lib --test --ghci-options='-fobject-code -fno-warn-unused-do-bind' --main-is $(package):$(package)"
+	$(stack) exec -- ghcid -c "stack ghci $(package) --test --ghci-options='-fobject-code -fno-warn-unused-do-bind'"
 
 dev-deps:
 	stack install ghcid

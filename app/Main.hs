@@ -1,47 +1,52 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE DeriveAnyClass      #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE DeriveTraversable   #-}
+{-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections       #-}
 
 module Main where
 
-import qualified Control.Foldl as Foldl
-import qualified Control.Concurrent.MSem as MSem
-import           Control.Concurrent.Async (forConcurrently_, mapConcurrently)
-import qualified Data.Aeson as Aeson
+import           Control.Concurrent.Async     (forConcurrently_,
+                                               mapConcurrently)
+import qualified Control.Concurrent.MSem      as MSem
+import qualified Control.Foldl                as Foldl
+import qualified Data.Aeson                   as Aeson
 import           Data.Aeson.Encode.Pretty
-import           Data.Either.Combinators (rightToMaybe)
-import           Data.Foldable (fold, foldMap, traverse_, for_)
-import qualified Data.Graph as G
-import           Data.List (maximumBy)
-import qualified Data.List as List
-import qualified Data.Map as Map
-import           Data.Maybe (fromMaybe, mapMaybe)
-import           Data.Ord (comparing)
-import qualified Data.Set as Set
-import           Data.Text (pack)
-import qualified Data.Text as T
-import           Data.Text.Encoding (encodeUtf8)
-import qualified Data.Text.Lazy as TL
-import qualified Data.Text.Lazy.Builder as TB
-import qualified Data.Text.Read as TR
-import           Data.Traversable (for)
-import           Data.Version (Version(..), parseVersion, showVersion)
-import qualified Filesystem.Path.CurrentOS as Path
-import           GHC.Generics (Generic)
-import qualified Options.Applicative as Opts
-import qualified Paths_psc_package as Paths
-import           System.Environment (getArgs)
-import qualified System.IO as IO
-import qualified System.Process as Process
+import           Data.Either.Combinators      (rightToMaybe)
+import           Data.Foldable                (fold, foldMap, traverse_)
+import qualified Data.Graph                   as G
+import           Data.List                    (maximumBy)
+import qualified Data.List                    as List
+import qualified Data.Map                     as Map
+import           Data.Maybe                   (fromMaybe, mapMaybe)
+import           Data.Ord                     (comparing)
+import qualified Data.Set                     as Set
+import           Data.Text                    (pack)
+import qualified Data.Text                    as T
+import           Data.Text.Encoding           (encodeUtf8)
+import qualified Data.Text.Lazy               as TL
+import qualified Data.Text.Lazy.Builder       as TB
+import qualified Data.Text.Read               as TR
+import           Data.Traversable             (for)
+import           Data.Version                 (Version (..), parseVersion,
+                                               showVersion)
+import qualified Filesystem.Path.CurrentOS    as Path
+import           GHC.Generics                 (Generic)
+import qualified Options.Applicative          as Opts
+import qualified Paths_psc_package            as Paths
+import           System.Environment           (getArgs)
+import qualified System.IO                    as IO
+import qualified System.Process               as Process
 import qualified Text.ParserCombinators.ReadP as Read
-import           Turtle hiding (arg, fold, s, x)
+import           Turtle                       hiding (arg, fold, s, x)
 import qualified Turtle
-import           Types (PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
+import           Types                        (PackageName, mkPackageName,
+                                               preludePackageName,
+                                               runPackageName,
+                                               untitledPackageName)
 
 echoT :: Text -> IO ()
 echoT = Turtle.printf (Turtle.s % "\n")
@@ -238,13 +243,18 @@ getTransitiveDeps db deps =
           sansPrefix <- T.stripPrefix "purescript-" (runPackageName pkg)
           rightToMaybe (mkPackageName sansPrefix)
 
-installImpl :: PackageConfig -> IO ()
-installImpl config@PackageConfig{ depends } = do
+installImpl :: PackageConfig -> Maybe Int -> IO ()
+installImpl config@PackageConfig{ depends } limitThreads = do
   getPackageSet config
   db <- readPackageSet config
   trans <- getTransitiveDeps db depends
   echoT ("Installing " <> pack (show (length trans)) <> " packages...")
-  forConcurrently_ trans . uncurry $ performInstall $ set config
+  case limitThreads of
+    Nothing ->
+      forConcurrently_ trans .  uncurry $ performInstall $ set config
+    Just max' -> do
+      sem <- MSem.new max'
+      forConcurrently_ trans .  uncurry . (\x y z -> MSem.with sem $ performInstall x y z) $ set config
 
 getPureScriptVersion :: IO Version
 getPureScriptVersion = do
@@ -282,33 +292,33 @@ initialize setAndSource = do
                            }
 
     writePackageFile pkg
-    installImpl pkg
+    installImpl pkg Nothing
   where
     packageNameFromPWD =
       either (const untitledPackageName) id . mkPackageName
 
-install :: Maybe String -> IO ()
-install pkgName' = do
+install :: Maybe String -> Maybe Int -> IO ()
+install pkgName' limitThreads = do
   pkg <- readPackageFile
   case pkgName' of
     Nothing -> do
-      installImpl pkg
+      installImpl pkg limitThreads
       echoT "Install complete"
     Just str -> do
       pkgName <- packageNameFromString str
       let pkg' = pkg { depends = List.nub (pkgName : depends pkg) }
-      updateAndWritePackageFile pkg'
+      updateAndWritePackageFile pkg' limitThreads
 
 uninstall :: String -> IO ()
 uninstall pkgName' = do
   pkg <- readPackageFile
   pkgName <- packageNameFromString pkgName'
   let pkg' = pkg { depends = filter (/= pkgName) $ depends pkg }
-  updateAndWritePackageFile pkg'
+  updateAndWritePackageFile pkg' Nothing
 
-updateAndWritePackageFile :: PackageConfig -> IO ()
-updateAndWritePackageFile pkg = do
-  installImpl pkg
+updateAndWritePackageFile :: PackageConfig -> Maybe Int -> IO ()
+updateAndWritePackageFile pkg limitThreads = do
+  installImpl pkg limitThreads
   writePackageFile pkg
   echoT "psc-package.json file was updated"
 
@@ -375,7 +385,7 @@ listSourcePaths = do
 exec :: [String] -> Bool -> [String] -> IO ()
 exec execNames onlyDeps passthroughOptions = do
   pkg <- readPackageFile
-  installImpl pkg
+  installImpl pkg Nothing
 
   paths <- getPaths
   let cmdParts = tail execNames
@@ -443,7 +453,7 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
             Just tag ->
               case parsePackageVersion tag of
                 Just parts -> pure parts
-                _ -> Nothing
+                _          -> Nothing
             _ -> Nothing
         _ -> Nothing
 
@@ -458,7 +468,7 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
     parseDecimal s =
       case TR.decimal s of
         Right (n, "") -> Just n
-        _ -> Nothing
+        _             -> Nothing
 
     isMajorReleaseFrom :: [Int] -> [Int] -> Bool
     isMajorReleaseFrom (0 : xs) (0 : ys) = isMajorReleaseFrom xs ys
@@ -506,7 +516,8 @@ verify arg = do
             Just pkgInfo -> performInstall (set pkg) pkgName pkgInfo
       echoT ("Verifying package " <> runPackageName name)
       dependencies <- map fst <$> getTransitiveDeps db [name]
-      dirs <- traverse dirFor dependencies
+      sem <- MSem.new (1:: Int)
+      dirs <- mapConcurrently (MSem.with sem . dirFor) dependencies
       let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs"))) dirs
       procs "purs" ("compile" : srcGlobs) empty
 
@@ -546,7 +557,7 @@ main = do
             (Opts.info (uninstall <$> pkg Opts.<**> Opts.helper)
             (Opts.progDesc "Uninstall the named package"))
         , Opts.command "install"
-            (Opts.info (install <$> optional pkg Opts.<**> Opts.helper)
+            (Opts.info (install <$> optional pkg <*> optional limitThreads Opts.<**> Opts.helper)
             (Opts.progDesc "Install/update the named package and add it to 'depends' if not already listed. If no package is specified, install/update all dependencies."))
         , Opts.command "build"
             (Opts.info (exec ["purs", "compile"]
@@ -586,6 +597,11 @@ main = do
         pkg = Opts.strArgument $
              Opts.metavar "PACKAGE"
           <> Opts.help "The name of the package to install"
+
+        limitThreads = Opts.option Opts.auto $
+             Opts.long "threads"
+          <> Opts.value (0 :: Int)
+          <> Opts.help "Limit the number of threads"
 
         source = Opts.strOption $
              Opts.long "source"
