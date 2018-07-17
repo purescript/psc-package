@@ -482,8 +482,8 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
 
 data VerifyArgs a = Package a | VerifyAll (Maybe a) deriving (Functor, Foldable, Traversable)
 
-verify :: VerifyArgs Text -> IO ()
-verify arg = do
+verify :: VerifyArgs Text -> Maybe Int -> IO ()
+verify arg limitThreads = do
   pkg <- readPackageFile
   db  <- readPackageSet pkg
   case traverse mkPackageName arg of
@@ -516,8 +516,11 @@ verify arg = do
             Just pkgInfo -> performInstall (set pkg) pkgName pkgInfo
       echoT ("Verifying package " <> runPackageName name)
       dependencies <- map fst <$> getTransitiveDeps db [name]
-      sem <- MSem.new (1:: Int)
-      dirs <- mapConcurrently (MSem.with sem . dirFor) dependencies
+      dirs <- case limitThreads of
+        Nothing -> mapConcurrently dirFor dependencies
+        Just max' -> do
+          sem <- MSem.new max'
+          mapConcurrently (MSem.with sem . dirFor) dependencies
       let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs"))) dirs
       procs "purs" ("compile" : srcGlobs) empty
 
@@ -587,6 +590,7 @@ main = do
             (Opts.info (verify <$>
                         ((Package . fromString <$> pkg)
                          <|> (VerifyAll <$> optional (fromString <$> after)))
+                        <*> optional limitThreads
                         Opts.<**> Opts.helper)
             (Opts.progDesc "Verify that the named package builds correctly. If no package is specified, verify that all packages in the package set build correctly."))
         , Opts.command "format"
