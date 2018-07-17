@@ -604,7 +604,6 @@ main = do
 
         limitThreads = Opts.option Opts.auto $
              Opts.long "threads"
-          <> Opts.value (0 :: Int)
           <> Opts.help "Limit the number of threads"
 
         source = Opts.strOption $
