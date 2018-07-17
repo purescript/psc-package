@@ -27,7 +27,8 @@ executable psc-package
                    system-filepath -any,
                    text -any,
                    errors -any,
-                   turtle <1.6
+                   turtle <1.6,
+                   SafeSemaphore -any
     main-is: Main.hs
     other-modules: Paths_psc_package
                    Types

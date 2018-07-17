@@ -10,11 +10,12 @@
 module Main where
 
 import qualified Control.Foldl as Foldl
+import qualified Control.Concurrent.MSem as MSem
 import           Control.Concurrent.Async (forConcurrently_, mapConcurrently)
 import qualified Data.Aeson as Aeson
 import           Data.Aeson.Encode.Pretty
 import           Data.Either.Combinators (rightToMaybe)
-import           Data.Foldable (fold, foldMap, traverse_)
+import           Data.Foldable (fold, foldMap, traverse_, for_)
 import qualified Data.Graph as G
 import           Data.List (maximumBy)
 import qualified Data.List as List
@@ -505,7 +506,7 @@ verify arg = do
             Just pkgInfo -> performInstall (set pkg) pkgName pkgInfo
       echoT ("Verifying package " <> runPackageName name)
       dependencies <- map fst <$> getTransitiveDeps db [name]
-      dirs <- mapConcurrently dirFor dependencies
+      dirs <- traverse dirFor dependencies
       let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs"))) dirs
       procs "purs" ("compile" : srcGlobs) empty
 
