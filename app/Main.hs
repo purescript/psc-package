@@ -267,8 +267,8 @@ getPureScriptVersion = do
       | otherwise -> exitWithErr "Unable to parse output of purs --version"
     _ -> exitWithErr "Unexpected output from purs --version"
 
-initialize :: Maybe (Text, Maybe Text) -> IO ()
-initialize setAndSource = do
+initialize :: Maybe (Text, Maybe Text) -> Maybe Int -> IO ()
+initialize setAndSource limitThreads = do
     exists <- testfile "psc-package.json"
     when exists $ exitWithErr "psc-package.json already exists"
     echoT "Initializing new project in current directory"
@@ -292,7 +292,7 @@ initialize setAndSource = do
                            }
 
     writePackageFile pkg
-    installImpl pkg Nothing
+    installImpl pkg limitThreads
   where
     packageNameFromPWD =
       either (const untitledPackageName) id . mkPackageName
@@ -309,12 +309,12 @@ install pkgName' limitThreads = do
       let pkg' = pkg { depends = List.nub (pkgName : depends pkg) }
       updateAndWritePackageFile pkg' limitThreads
 
-uninstall :: String -> IO ()
-uninstall pkgName' = do
+uninstall :: String -> Maybe Int -> IO ()
+uninstall pkgName' limitThreads = do
   pkg <- readPackageFile
   pkgName <- packageNameFromString pkgName'
   let pkg' = pkg { depends = filter (/= pkgName) $ depends pkg }
-  updateAndWritePackageFile pkg' Nothing
+  updateAndWritePackageFile pkg' limitThreads
 
 updateAndWritePackageFile :: PackageConfig -> Maybe Int -> IO ()
 updateAndWritePackageFile pkg limitThreads = do
@@ -382,10 +382,10 @@ listSourcePaths = do
 -- | Helper for calling through to @purs@
 --
 -- Extra args will be appended to the options
-exec :: [String] -> Bool -> [String] -> IO ()
-exec execNames onlyDeps passthroughOptions = do
+exec :: [String] -> Bool -> [String] -> Maybe Int -> IO ()
+exec execNames onlyDeps passthroughOptions limitThreads = do
   pkg <- readPackageFile
-  installImpl pkg Nothing
+  installImpl pkg limitThreads
 
   paths <- getPaths
   let cmdParts = tail execNames
@@ -554,10 +554,11 @@ main = do
         [ Opts.command "init"
             (Opts.info (initialize <$> optional ((,) <$> (fromString <$> set)
                                                      <*> optional (fromString <$> source))
+                                   <*> optional limitThreads
                                    Opts.<**> Opts.helper)
             (Opts.progDesc "Create a new psc-package.json file"))
         , Opts.command "uninstall"
-            (Opts.info (uninstall <$> pkg Opts.<**> Opts.helper)
+            (Opts.info (uninstall <$> pkg <*> optional limitThreads Opts.<**> Opts.helper)
             (Opts.progDesc "Uninstall the named package"))
         , Opts.command "install"
             (Opts.info (install <$> optional pkg <*> optional limitThreads Opts.<**> Opts.helper)
@@ -566,12 +567,14 @@ main = do
             (Opts.info (exec ["purs", "compile"]
                         <$> onlyDeps "Compile only the package's dependencies"
                         <*> passthroughArgs "purs compile"
+                        <*> optional limitThreads
                         Opts.<**> Opts.helper)
             (Opts.progDesc "Install dependencies and compile the current package"))
         , Opts.command "repl"
             (Opts.info (exec ["purs", "repl"]
                         <$> onlyDeps "Load only the package's dependencies"
                         <*> passthroughArgs "purs repl"
+                        <*> optional limitThreads
                         Opts.<**> Opts.helper)
             (Opts.progDesc "Open an interactive environment for PureScript"))
         , Opts.command "dependencies"
