@@ -11,7 +11,7 @@ module Main where
 
 import           Control.Concurrent.Async     (forConcurrently_,
                                                mapConcurrently)
-import           Control.Concurrent.QSem      (newQSem, waitQSem)
+import           Control.Concurrent.QSem      (newQSem, signalQSem, waitQSem)
 import qualified Control.Foldl                as Foldl
 import qualified Data.Aeson                   as Aeson
 import           Data.Aeson.Encode.Pretty
@@ -254,7 +254,7 @@ installImpl config@PackageConfig{ depends } limitJobs = do
       forConcurrently_ trans .  uncurry $ performInstall $ set config
     Just max' -> do
       sem <- newQSem max'
-      forConcurrently_ trans .  uncurry . (\x y z -> waitQSem sem *> performInstall x y z) $ set config
+      forConcurrently_ trans .  uncurry . (\x y z -> waitQSem sem *> performInstall x y z <* signalQSem sem) $ set config
 
 getPureScriptVersion :: IO Version
 getPureScriptVersion = do
@@ -520,7 +520,7 @@ verify arg limitJobs = do
         Nothing -> mapConcurrently dirFor dependencies
         Just max' -> do
           sem <- newQSem max'
-          mapConcurrently ((waitQSem sem *>) . dirFor) dependencies
+          mapConcurrently (\x -> waitQSem sem *> dirFor x <* signalQSem sem) dependencies
       let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs"))) dirs
       procs "purs" ("compile" : srcGlobs) empty
 
