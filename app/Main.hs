@@ -1,52 +1,48 @@
-{-# LANGUAGE DeriveAnyClass      #-}
-{-# LANGUAGE DeriveGeneric       #-}
-{-# LANGUAGE DeriveTraversable   #-}
-{-# LANGUAGE NamedFieldPuns      #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections       #-}
 
 module Main where
 
-import           Control.Concurrent.Async     (forConcurrently_,
-                                               mapConcurrently)
-import           Control.Concurrent.QSem      (newQSem, signalQSem, waitQSem)
-import qualified Control.Foldl                as Foldl
-import qualified Data.Aeson                   as Aeson
+import qualified Control.Foldl as Foldl
+import           Control.Concurrent.Async (forConcurrently_, mapConcurrently)
+import           Control.Concurrent.QSem (newQSem, signalQSem, waitQSem)
+import           Control.Exception (bracket_)
+import qualified Data.Aeson as Aeson
 import           Data.Aeson.Encode.Pretty
-import           Data.Either.Combinators      (rightToMaybe)
-import           Data.Foldable                (fold, foldMap, traverse_)
-import qualified Data.Graph                   as G
-import           Data.List                    (maximumBy)
-import qualified Data.List                    as List
-import qualified Data.Map                     as Map
-import           Data.Maybe                   (fromMaybe, mapMaybe)
-import           Data.Ord                     (comparing)
-import qualified Data.Set                     as Set
-import           Data.Text                    (pack)
-import qualified Data.Text                    as T
-import           Data.Text.Encoding           (encodeUtf8)
-import qualified Data.Text.Lazy               as TL
-import qualified Data.Text.Lazy.Builder       as TB
-import qualified Data.Text.Read               as TR
-import           Data.Traversable             (for)
-import           Data.Version                 (Version (..), parseVersion,
-                                               showVersion)
-import qualified Filesystem.Path.CurrentOS    as Path
-import           GHC.Generics                 (Generic)
-import qualified Options.Applicative          as Opts
-import qualified Paths_psc_package            as Paths
-import           System.Environment           (getArgs)
-import qualified System.IO                    as IO
-import qualified System.Process               as Process
+import           Data.Either.Combinators (rightToMaybe)
+import           Data.Foldable (fold, foldMap, traverse_)
+import qualified Data.Graph as G
+import           Data.List (maximumBy)
+import qualified Data.List as List
+import qualified Data.Map as Map
+import           Data.Maybe (fromMaybe, mapMaybe)
+import           Data.Ord (comparing)
+import qualified Data.Set as Set
+import           Data.Text (pack)
+import qualified Data.Text as T
+import           Data.Text.Encoding (encodeUtf8)
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Builder as TB
+import qualified Data.Text.Read as TR
+import           Data.Traversable (for)
+import           Data.Version (Version(..), parseVersion, showVersion)
+import qualified Filesystem.Path.CurrentOS as Path
+import           GHC.Generics (Generic)
+import qualified Options.Applicative as Opts
+import qualified Paths_psc_package as Paths
+import           System.Environment (getArgs)
+import qualified System.IO as IO
+import qualified System.Process as Process
 import qualified Text.ParserCombinators.ReadP as Read
-import           Turtle                       hiding (arg, fold, s, x)
+import           Turtle hiding (arg, fold, s, x)
 import qualified Turtle
-import           Types                        (PackageName, mkPackageName,
-                                               preludePackageName,
-                                               runPackageName,
-                                               untitledPackageName)
+import Types (PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
 
 echoT :: Text -> IO ()
 echoT = Turtle.printf (Turtle.s % "\n")
@@ -254,7 +250,7 @@ installImpl config@PackageConfig{ depends } limitJobs = do
       forConcurrently_ trans .  uncurry $ performInstall $ set config
     Just max' -> do
       sem <- newQSem max'
-      forConcurrently_ trans .  uncurry . (\x y z -> waitQSem sem *> performInstall x y z <* signalQSem sem) $ set config
+      forConcurrently_ trans .  uncurry . (\x y z -> bracket_ (waitQSem sem) (signalQSem sem) (performInstall x y z)) $ set config
 
 getPureScriptVersion :: IO Version
 getPureScriptVersion = do
@@ -520,7 +516,7 @@ verify arg limitJobs = do
         Nothing -> mapConcurrently dirFor dependencies
         Just max' -> do
           sem <- newQSem max'
-          mapConcurrently (\x -> waitQSem sem *> dirFor x <* signalQSem sem) dependencies
+          mapConcurrently (bracket_ (waitQSem sem) (signalQSem sem) . dirFor) dependencies
       let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs"))) dirs
       procs "purs" ("compile" : srcGlobs) empty
 
