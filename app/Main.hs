@@ -464,7 +464,7 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
     parseDecimal s =
       case TR.decimal s of
         Right (n, "") -> Just n
-        _             -> Nothing
+        _ -> Nothing
 
     isMajorReleaseFrom :: [Int] -> [Int] -> Bool
     isMajorReleaseFrom (0 : xs) (0 : ys) = isMajorReleaseFrom xs ys
