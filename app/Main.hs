@@ -11,6 +11,8 @@ module Main where
 
 import qualified Control.Foldl as Foldl
 import           Control.Concurrent.Async (forConcurrently_, mapConcurrently)
+import           Control.Concurrent.QSem (newQSem, signalQSem, waitQSem)
+import           Control.Exception (bracket_)
 import qualified Data.Aeson as Aeson
 import           Data.Aeson.Encode.Pretty
 import           Data.Either.Combinators (rightToMaybe)
@@ -237,13 +239,18 @@ getTransitiveDeps db deps =
           sansPrefix <- T.stripPrefix "purescript-" (runPackageName pkg)
           rightToMaybe (mkPackageName sansPrefix)
 
-installImpl :: PackageConfig -> IO ()
-installImpl config@PackageConfig{ depends } = do
+installImpl :: PackageConfig -> Maybe Int -> IO ()
+installImpl config@PackageConfig{ depends } limitJobs = do
   getPackageSet config
   db <- readPackageSet config
   trans <- getTransitiveDeps db depends
   echoT ("Installing " <> pack (show (length trans)) <> " packages...")
-  forConcurrently_ trans . uncurry $ performInstall $ set config
+  case limitJobs of
+    Nothing ->
+      forConcurrently_ trans .  uncurry $ performInstall $ set config
+    Just max' -> do
+      sem <- newQSem max'
+      forConcurrently_ trans .  uncurry . (\x y z -> bracket_ (waitQSem sem) (signalQSem sem) (performInstall x y z)) $ set config
 
 getPureScriptVersion :: IO Version
 getPureScriptVersion = do
@@ -256,8 +263,8 @@ getPureScriptVersion = do
       | otherwise -> exitWithErr "Unable to parse output of purs --version"
     _ -> exitWithErr "Unexpected output from purs --version"
 
-initialize :: Maybe (Text, Maybe Text) -> IO ()
-initialize setAndSource = do
+initialize :: Maybe (Text, Maybe Text) -> Maybe Int -> IO ()
+initialize setAndSource limitJobs = do
     exists <- testfile "psc-package.json"
     when exists $ exitWithErr "psc-package.json already exists"
     echoT "Initializing new project in current directory"
@@ -281,33 +288,33 @@ initialize setAndSource = do
                            }
 
     writePackageFile pkg
-    installImpl pkg
+    installImpl pkg limitJobs
   where
     packageNameFromPWD =
       either (const untitledPackageName) id . mkPackageName
 
-install :: Maybe String -> IO ()
-install pkgName' = do
+install :: Maybe String -> Maybe Int -> IO ()
+install pkgName' limitJobs = do
   pkg <- readPackageFile
   case pkgName' of
     Nothing -> do
-      installImpl pkg
+      installImpl pkg limitJobs
       echoT "Install complete"
     Just str -> do
       pkgName <- packageNameFromString str
       let pkg' = pkg { depends = List.nub (pkgName : depends pkg) }
-      updateAndWritePackageFile pkg'
+      updateAndWritePackageFile pkg' limitJobs
 
-uninstall :: String -> IO ()
-uninstall pkgName' = do
+uninstall :: String -> Maybe Int -> IO ()
+uninstall pkgName' limitJobs = do
   pkg <- readPackageFile
   pkgName <- packageNameFromString pkgName'
   let pkg' = pkg { depends = filter (/= pkgName) $ depends pkg }
-  updateAndWritePackageFile pkg'
+  updateAndWritePackageFile pkg' limitJobs
 
-updateAndWritePackageFile :: PackageConfig -> IO ()
-updateAndWritePackageFile pkg = do
-  installImpl pkg
+updateAndWritePackageFile :: PackageConfig -> Maybe Int -> IO ()
+updateAndWritePackageFile pkg limitJobs = do
+  installImpl pkg limitJobs
   writePackageFile pkg
   echoT "psc-package.json file was updated"
 
@@ -371,10 +378,10 @@ listSourcePaths = do
 -- | Helper for calling through to @purs@
 --
 -- Extra args will be appended to the options
-exec :: [String] -> Bool -> [String] -> IO ()
-exec execNames onlyDeps passthroughOptions = do
+exec :: [String] -> Bool -> [String] -> Maybe Int -> IO ()
+exec execNames onlyDeps passthroughOptions limitJobs = do
   pkg <- readPackageFile
-  installImpl pkg
+  installImpl pkg limitJobs
 
   paths <- getPaths
   let cmdParts = tail execNames
@@ -471,8 +478,8 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
 
 data VerifyArgs a = Package a | VerifyAll (Maybe a) deriving (Functor, Foldable, Traversable)
 
-verify :: VerifyArgs Text -> IO ()
-verify arg = do
+verify :: VerifyArgs Text -> Maybe Int -> IO ()
+verify arg limitJobs = do
   pkg <- readPackageFile
   db  <- readPackageSet pkg
   case traverse mkPackageName arg of
@@ -505,7 +512,11 @@ verify arg = do
             Just pkgInfo -> performInstall (set pkg) pkgName pkgInfo
       echoT ("Verifying package " <> runPackageName name)
       dependencies <- map fst <$> getTransitiveDeps db [name]
-      dirs <- mapConcurrently dirFor dependencies
+      dirs <- case limitJobs of
+        Nothing -> mapConcurrently dirFor dependencies
+        Just max' -> do
+          sem <- newQSem max'
+          mapConcurrently (bracket_ (waitQSem sem) (signalQSem sem) . dirFor) dependencies
       let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs"))) dirs
       procs "purs" ("compile" : srcGlobs) empty
 
@@ -539,24 +550,27 @@ main = do
         [ Opts.command "init"
             (Opts.info (initialize <$> optional ((,) <$> (fromString <$> set)
                                                      <*> optional (fromString <$> source))
+                                   <*> optional limitJobs
                                    Opts.<**> Opts.helper)
             (Opts.progDesc "Create a new psc-package.json file"))
         , Opts.command "uninstall"
-            (Opts.info (uninstall <$> pkg Opts.<**> Opts.helper)
+            (Opts.info (uninstall <$> pkg <*> optional limitJobs Opts.<**> Opts.helper)
             (Opts.progDesc "Uninstall the named package"))
         , Opts.command "install"
-            (Opts.info (install <$> optional pkg Opts.<**> Opts.helper)
+            (Opts.info (install <$> optional pkg <*> optional limitJobs Opts.<**> Opts.helper)
             (Opts.progDesc "Install/update the named package and add it to 'depends' if not already listed. If no package is specified, install/update all dependencies."))
         , Opts.command "build"
             (Opts.info (exec ["purs", "compile"]
                         <$> onlyDeps "Compile only the package's dependencies"
                         <*> passthroughArgs "purs compile"
+                        <*> optional limitJobs
                         Opts.<**> Opts.helper)
             (Opts.progDesc "Install dependencies and compile the current package"))
         , Opts.command "repl"
             (Opts.info (exec ["purs", "repl"]
                         <$> onlyDeps "Load only the package's dependencies"
                         <*> passthroughArgs "purs repl"
+                        <*> optional limitJobs
                         Opts.<**> Opts.helper)
             (Opts.progDesc "Open an interactive environment for PureScript"))
         , Opts.command "dependencies"
@@ -575,6 +589,7 @@ main = do
             (Opts.info (verify <$>
                         ((Package . fromString <$> pkg)
                          <|> (VerifyAll <$> optional (fromString <$> after)))
+                        <*> optional limitJobs
                         Opts.<**> Opts.helper)
             (Opts.progDesc "Verify that the named package builds correctly. If no package is specified, verify that all packages in the package set build correctly."))
         , Opts.command "format"
@@ -585,6 +600,10 @@ main = do
         pkg = Opts.strArgument $
              Opts.metavar "PACKAGE"
           <> Opts.help "The name of the package to install"
+
+        limitJobs = Opts.option Opts.auto $
+             Opts.long "jobs"
+          <> Opts.help "Limit the number of jobs that can run concurrently"
 
         source = Opts.strOption $
              Opts.long "source"
