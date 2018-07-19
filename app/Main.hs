@@ -42,7 +42,7 @@ import qualified System.Process as Process
 import qualified Text.ParserCombinators.ReadP as Read
 import           Turtle hiding (arg, fold, s, x)
 import qualified Turtle
-import Types (PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
+import           Types (PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
 
 echoT :: Text -> IO ()
 echoT = Turtle.printf (Turtle.s % "\n")
@@ -449,7 +449,7 @@ checkForUpdates applyMinorUpdates applyMajorUpdates = do
             Just tag ->
               case parsePackageVersion tag of
                 Just parts -> pure parts
-                _          -> Nothing
+                _ -> Nothing
             _ -> Nothing
         _ -> Nothing
 
