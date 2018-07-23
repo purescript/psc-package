@@ -13,6 +13,7 @@ import qualified Control.Foldl as Foldl
 import           Control.Concurrent.Async (forConcurrently_, mapConcurrently)
 import           Control.Concurrent.QSem (newQSem, signalQSem, waitQSem)
 import           Control.Exception (bracket_)
+import           Control.Monad (filterM)
 import qualified Data.Aeson as Aeson
 import           Data.Aeson.Encode.Pretty
 import           Data.Either.Combinators (rightToMaybe)
@@ -56,6 +57,10 @@ packageFile = "psc-package.json"
 
 localPackageSet :: Path.FilePath
 localPackageSet = "packages.json"
+
+packageDir :: Text -> PackageName -> Text -> Turtle.FilePath
+packageDir set pkgName version =
+  ".psc-package" </> fromText set </> fromText (runPackageName pkgName) </> fromText version
 
 data PackageConfig = PackageConfig
   { name    :: PackageName
@@ -191,7 +196,7 @@ writeLocalPackageSet = writeTextFile localPackageSet . packageSetToJSON
 
 performInstall :: Text -> PackageName -> PackageInfo -> IO Turtle.FilePath
 performInstall set pkgName PackageInfo{ repo, version } = do
-  let pkgDir = ".psc-package" </> fromText set </> fromText (runPackageName pkgName) </> fromText version
+  let pkgDir = packageDir set pkgName version
   exists <- testdir pkgDir
   unless exists . void $ do
     echoT ("Installing " <> runPackageName pkgName)
@@ -243,14 +248,21 @@ installImpl :: PackageConfig -> Maybe Int -> IO ()
 installImpl config@PackageConfig{ depends } limitJobs = do
   getPackageSet config
   db <- readPackageSet config
-  trans <- getTransitiveDeps db depends
-  echoT ("Installing " <> pack (show (length trans)) <> " packages...")
+  newPkgs <- getNewPackages db
+  when (length newPkgs > 1) $ do
+    echoT ("Installing " <> pack (show (length newPkgs)) <> " new packages...")
   case limitJobs of
     Nothing ->
-      forConcurrently_ trans .  uncurry $ performInstall $ set config
+      forConcurrently_ newPkgs .  uncurry $ performInstall $ set config
     Just max' -> do
       sem <- newQSem max'
-      forConcurrently_ trans .  uncurry . (\x y z -> bracket_ (waitQSem sem) (signalQSem sem) (performInstall x y z)) $ set config
+      forConcurrently_ newPkgs .  uncurry . (\x y z -> bracket_ (waitQSem sem) (signalQSem sem) (performInstall x y z)) $ set config
+  where
+    getNewPackages db =
+      getTransitiveDeps db depends >>= filterM isNewPackage
+
+    isNewPackage (name, info) =
+      fmap not $ testdir $ packageDir (set config) name (version info)
 
 getPureScriptVersion :: IO Version
 getPureScriptVersion = do
@@ -355,11 +367,7 @@ listPackages sorted = do
 getSourcePaths :: PackageConfig -> PackageSet -> [PackageName] -> IO [Turtle.FilePath]
 getSourcePaths PackageConfig{..} db pkgNames = do
   trans <- getTransitiveDeps db pkgNames
-  let paths = [ ".psc-package"
-                </> fromText set
-                </> fromText (runPackageName pkgName)
-                </> fromText version
-                </> "src" </> "**" </> "*.purs"
+  let paths = [ packageDir set pkgName version </> "src" </> "**" </> "*.purs"
               | (pkgName, PackageInfo{ version }) <- trans
               ]
   return paths
