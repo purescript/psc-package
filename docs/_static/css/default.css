@@ -1,0 +1,5 @@
+.rst-content pre.literal-block,.rst-content div[class^='highlight'] pre,.rst-content .linenodiv pre {
+  font-family: SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",Courier,monospace;
+  font-size: 14px;
+  line-height: 1.5;
+}
