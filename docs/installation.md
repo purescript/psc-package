@@ -2,7 +2,7 @@
 
 ## Any platform
 
-You can install Psc-Package on any platfofrm by downloading the binary for your platform from [the releases page](https://github.com/purescript/psc-package/releases) and copying it somewhere on your PATH.
+You can install Psc-Package on any platform by downloading the binary for your platform from [the releases page](https://github.com/purescript/psc-package/releases) and copying it somewhere on your PATH.
 
 ## Linux/OSX
 
