@@ -4,7 +4,7 @@
 
 `psc-package` is an executable which helps manage PureScript dependencies via Git. It can be used directly, but it is also designed to be used by external tools.
 
-**See the [guide](TBD) to learn how to use Psc-Package.**
+**See the [guide](https://psc-package.readthedocs.io/en/latest/) to learn how to use Psc-Package.**
 
 ## Installation
 
