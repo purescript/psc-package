@@ -1,6 +1,6 @@
 # FAQ
 
-## Is there an easier way to manage my package sets than to edit psc-package.json?
+## Is there an easier way to manage my package sets than to edit packages.json?
 
 Yes. For example, the [Spacchetti](https://github.com/justinwoo/spacchetti/) project uses Dhall to allow for easily maintaining a fork with separate type-checked sub-sets of packages and to allow for users to have local overrides of package sets.
 
