@@ -10,6 +10,12 @@ You can install Psc-Package on any platform by downloading the binary for your p
 
 You might install <http://npmjs.com/package/psc-package-bin-simple> either globally or via project depencies.
 
+### Nix
+
+You should be able to use the derivation provided in nixpkgs: <https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/compilers/purescript/psc-package/default.nix>.
+
+If you're not on NixOS, you might use `nix-env -i psc-package`.
+
 ## Windows
 
 If you're a **Windows Chocolatey** user, then you can install `psc-package` from the [official repo](https://chocolatey.org/packages/psc-package):
