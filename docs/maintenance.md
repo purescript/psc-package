@@ -42,3 +42,9 @@ When creating your pull request, make sure to run the `format` command to pretty
 Similar to the above, you will need to do the setup. You can then modify the version field to the version you wish to use. Once you have updated the package set, run the copy command and verify the package you have modified.
 
 Then you can make a pull request. Again, once Travis verifies your change, we will merge it into `master` and your change will be available in the next tag.
+
+## Alternative package sets
+
+You may also be interested in using Spacchetti, a package set project using Dhall to define and work with package sets: <https://github.com/justinwoo/spacchetti>.
+
+It also defines ways to define a local package set that inherits from a remote one, so you can define local overrides and additions to your package set easily.
