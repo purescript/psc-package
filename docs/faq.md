@@ -26,3 +26,7 @@ clear the cache for the changes to take effect.
 $ rm -rf .psc-package
 $ psc-package install
 ```
+
+## Can I use Psc-Package with Nix?
+
+Yes, now there is a solution for using Psc-Package with Nix: <https://github.com/justinwoo/psc-package2nix>. Please file issues in that project if you run into any.
