@@ -266,7 +266,7 @@ installImpl config@PackageConfig{ depends } limitJobs = do
 
 getPureScriptVersion :: IO Version
 getPureScriptVersion = do
-  let pursProc = inproc "purs" [ "--version" ] empty
+  let pursProc = inshell "purs --version" empty
   outputLines <- shellToIOText pursProc
   case outputLines of
     [onlyLine]
@@ -392,19 +392,13 @@ exec execNames onlyDeps passthroughOptions limitJobs = do
   installImpl pkg limitJobs
 
   paths <- getPaths
-  let cmdParts = tail execNames
-      srcParts = [ "src" </> "**" </> "*.purs" | not onlyDeps ]
+  let srcParts = [ "src" </> "**" </> "*.purs" | not onlyDeps ]
   exit
     =<< Process.waitForProcess
-    =<< Process.runProcess
-          (head execNames)
-          (cmdParts <> passthroughOptions
-                    <> map Path.encodeString (srcParts <> paths))
-          Nothing -- no special path to the working dir
-          Nothing -- no env vars
-          Nothing -- use existing stdin
-          Nothing -- use existing stdout
-          Nothing -- use existing stderr
+    =<< Process.runCommand
+          (unwords
+            (execNames <> passthroughOptions
+                       <> map Path.encodeString (srcParts <> paths)))
 
 checkForUpdates :: Bool -> Bool -> IO ()
 checkForUpdates applyMinorUpdates applyMajorUpdates = do
@@ -526,7 +520,7 @@ verify arg limitJobs = do
           sem <- newQSem max'
           mapConcurrently (bracket_ (waitQSem sem) (signalQSem sem) . dirFor) dependencies
       let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs"))) dirs
-      procs "purs" ("compile" : srcGlobs) empty
+      shells ("purs compile" <> " " <>  T.intercalate " " srcGlobs) empty
 
 formatPackageFile :: IO ()
 formatPackageFile =
