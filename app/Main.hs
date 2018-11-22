@@ -214,6 +214,16 @@ getReverseDeps db dep =
           innerDeps <- getReverseDeps db packageName
           return $ pair : innerDeps
 
+getPursPath :: IO Text
+getPursPath = do
+  bin <- which "purs" -- *nix binary
+  exe <- which "purs.exe" -- windows binary (maybe it putted directly on the PATH)
+  cmd <- which "purs.cmd" -- windows binary wrapper (maybe it built with npm)
+  let purs = bin <|> exe <|> cmd
+  case purs of
+    Nothing -> exitWithErr "The \"purs\" executable could not be found. Please make sure your PATH variable is set correctly"
+    Just p -> return $ pathToTextUnsafe p
+
 getTransitiveDeps :: PackageSet -> [PackageName] -> IO [(PackageName, PackageInfo)]
 getTransitiveDeps db deps =
     Map.toList . fold <$> traverse (go Set.empty) deps
@@ -266,7 +276,8 @@ installImpl config@PackageConfig{ depends } limitJobs = do
 
 getPureScriptVersion :: IO Version
 getPureScriptVersion = do
-  let pursProc = inproc "purs" [ "--version" ] empty
+  pursPath <- getPursPath
+  let pursProc = inproc pursPath [ "--version" ] empty
   outputLines <- shellToIOText pursProc
   case outputLines of
     [onlyLine]
@@ -391,13 +402,15 @@ exec execNames onlyDeps passthroughOptions limitJobs = do
   pkg <- readPackageFile
   installImpl pkg limitJobs
 
+  pursPath <- getPursPath
   paths <- getPaths
-  let cmdParts = tail execNames
+  let cmdName = head execNames
+      cmdParts = tail execNames
       srcParts = [ "src" </> "**" </> "*.purs" | not onlyDeps ]
   exit
     =<< Process.waitForProcess
     =<< Process.runProcess
-          (head execNames)
+          (if cmdName == "purs" then T.unpack pursPath else cmdName)
           (cmdParts <> passthroughOptions
                     <> map Path.encodeString (srcParts <> paths))
           Nothing -- no special path to the working dir
@@ -526,7 +539,8 @@ verify arg limitJobs = do
           sem <- newQSem max'
           mapConcurrently (bracket_ (waitQSem sem) (signalQSem sem) . dirFor) dependencies
       let srcGlobs = map (pathToTextUnsafe . (</> ("src" </> "**" </> "*.purs"))) dirs
-      procs "purs" ("compile" : srcGlobs) empty
+      pursPath <- getPursPath
+      procs pursPath ("compile" : srcGlobs) empty
 
 formatPackageFile :: IO ()
 formatPackageFile =
