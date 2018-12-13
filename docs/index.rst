@@ -13,5 +13,6 @@ Pages
   intro
   installation
   usage
+  nix
   maintenance
   faq
