@@ -15,7 +15,7 @@ Adding a package is a manual process right now. We would like to add commands to
 * `repo` - a git url for the package. We most often use the format `https://github.com/{user}/purescript-{project-name}.git`
 * `version` - the git tag that will be used, using the format `v{Major}.{Minor}.{Patch}`
 
-- run `./travis.sh` to verify your package set changes.
+- run `./travis.sh <PACKAGE>`, e.g. `./travis.sh aff`, to verify your package set changes.
 
 If this builds correctly, you can then push up this branch and make a pull request. Travis will verify your package builds correctly, and then we will try to merge your pull request. Your package will then be available in the next tagged package set.
 
