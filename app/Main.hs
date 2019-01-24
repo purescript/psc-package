@@ -181,7 +181,7 @@ handleReadPackageSet dbFile = do
   unless exists $ exitWithErr $ format (fp%" does not exist") dbFile
   mdb <- Aeson.eitherDecodeStrict . encodeUtf8 <$> readTextFile dbFile
   case mdb of
-    Left errors -> exitWithErr $ red ("Unable to parse packages.json: ") <> T.pack errors
+    Left errors -> exitWithErr $ "Unable to parse packages.json: " <> T.pack errors
     Right db -> return db
 
 writePackageSet :: PackageConfig -> PackageSet -> IO ()
@@ -241,7 +241,7 @@ getTransitiveDeps db deps =
             return (Map.insert pkg info m)
 
     pkgNotFoundMsg pkg =
-      "Package `" <> (yellow $ runPackageName pkg) <> "` does not exist in package set" <> extraHelp
+      "Package `" <> (yellow $ runPackageName pkg) <> "` )does not exist in package set" <> extraHelp
       where
         extraHelp = case suggestedPkg of
           Just pkg' | Map.member pkg' db ->
@@ -290,7 +290,7 @@ getPureScriptVersion = do
 initialize :: Maybe (Text, Maybe Text) -> Maybe Int -> IO ()
 initialize setAndSource limitJobs = do
     exists <- testfile "psc-package.json"
-    when exists $ exitWithErr (red "psc-package.json already exists")
+    when exists $ exitWithErr "psc-package.json already exists"
     echoT (cyan "Initializing new project in current directory")
     pkgName <- packageNameFromPWD . pathToTextUnsafe . Path.filename <$> pwd
     pkg <- case setAndSource of
@@ -531,7 +531,7 @@ verify arg limitJobs = do
       let
         dirFor pkgName =
           case Map.lookup pkgName db of
-            Nothing -> error $ red ("verifyPackageSet: no directory for " <> show pkgName)
+            Nothing -> error $ "verifyPackageSet: no directory for " <> show pkgName
             Just pkgInfo -> performInstall (set pkg) pkgName pkgInfo
       echoT ("Verifying package " <> (yellow $ runPackageName name))
       dependencies <- map fst <$> getTransitiveDeps db [name]
@@ -553,9 +553,6 @@ yellow t = Colours.color Colours.Yellow t
 
 cyan :: Colours.Pretty a => a -> a
 cyan t = Colours.color Colours.Cyan t
-
-red :: Colours.Pretty a => a -> a
-red t = Colours.color Colours.Red t
 
 main :: IO ()
 main = do
