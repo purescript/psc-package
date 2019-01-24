@@ -43,6 +43,7 @@ import qualified System.Process as Process
 import qualified Text.ParserCombinators.ReadP as Read
 import           Turtle hiding (arg, fold, s, x)
 import qualified Turtle
+import qualified System.Console.Pretty as Colours
 import           Types (PackageName, mkPackageName, runPackageName, untitledPackageName, preludePackageName)
 
 echoT :: Text -> IO ()
@@ -60,7 +61,7 @@ localPackageSet = "packages.json"
 
 packageDir :: Text -> PackageName -> Text -> Turtle.FilePath
 packageDir set pkgName version =
-  ".psc-package" </> fromText set </> fromText (runPackageName pkgName) </> fromText version
+  ".psc-package" </> fromText set </> fromText (yellow $ runPackageName pkgName) </> fromText version
 
 data PackageConfig = PackageConfig
   { name    :: PackageName
@@ -180,7 +181,7 @@ handleReadPackageSet dbFile = do
   unless exists $ exitWithErr $ format (fp%" does not exist") dbFile
   mdb <- Aeson.eitherDecodeStrict . encodeUtf8 <$> readTextFile dbFile
   case mdb of
-    Left errors -> exitWithErr $ "Unable to parse packages.json: " <> T.pack errors
+    Left errors -> exitWithErr $ red ("Unable to parse packages.json: ") <> T.pack errors
     Right db -> return db
 
 writePackageSet :: PackageConfig -> PackageSet -> IO ()
@@ -199,7 +200,7 @@ performInstall set pkgName PackageInfo{ repo, version } = do
   let pkgDir = packageDir set pkgName version
   exists <- testdir pkgDir
   unless exists . void $ do
-    echoT ("Installing " <> runPackageName pkgName)
+    echoT ("Installing " <> (yellow (runPackageName pkgName)))
     cloneShallow repo version pkgDir
   pure pkgDir
 
@@ -230,7 +231,7 @@ getTransitiveDeps db deps =
   where
     go seen pkg
       | pkg `Set.member` seen =
-          exitWithErr ("Cycle in package dependencies at package " <> runPackageName pkg)
+          exitWithErr ("Cycle in package dependencies at package " <> (yellow $ runPackageName pkg))
       | otherwise =
         case Map.lookup pkg db of
           Nothing ->
@@ -240,13 +241,13 @@ getTransitiveDeps db deps =
             return (Map.insert pkg info m)
 
     pkgNotFoundMsg pkg =
-      "Package `" <> runPackageName pkg <> "` does not exist in package set" <> extraHelp
+      "Package `" <> (yellow $ runPackageName pkg) <> "` does not exist in package set" <> extraHelp
       where
         extraHelp = case suggestedPkg of
           Just pkg' | Map.member pkg' db ->
-            " (but `" <> runPackageName pkg' <> "` does, did you mean that instead?)"
+            " (but `" <> (cyan $ runPackageName pkg') <> "` does, did you mean that instead?)"
           Just pkg' ->
-            " (and nor does `" <> runPackageName pkg' <> "`)"
+            " (and nor does `" <> (cyan $ runPackageName pkg') <> "`)"
           Nothing ->
             ""
 
@@ -260,7 +261,7 @@ installImpl config@PackageConfig{ depends } limitJobs = do
   db <- readPackageSet config
   newPkgs <- getNewPackages db
   when (length newPkgs > 1) $ do
-    echoT ("Installing " <> pack (show (length newPkgs)) <> " new packages...")
+    echoT ("Installing " <> pack (cyan $ show (length newPkgs)) <> " new packages...")
   case limitJobs of
     Nothing ->
       forConcurrently_ newPkgs .  uncurry $ performInstall $ set config
@@ -289,15 +290,15 @@ getPureScriptVersion = do
 initialize :: Maybe (Text, Maybe Text) -> Maybe Int -> IO ()
 initialize setAndSource limitJobs = do
     exists <- testfile "psc-package.json"
-    when exists $ exitWithErr "psc-package.json already exists"
-    echoT "Initializing new project in current directory"
+    when exists $ exitWithErr (red "psc-package.json already exists")
+    echoT (cyan "Initializing new project in current directory")
     pkgName <- packageNameFromPWD . pathToTextUnsafe . Path.filename <$> pwd
     pkg <- case setAndSource of
       Nothing -> do
         pursVersion <- getPureScriptVersion
         echoT ("Using the default package set for PureScript compiler version " <>
-          fromString (showVersion pursVersion))
-        echoT "(Use --source / --set to override this behavior)"
+          yellow (fromString (showVersion pursVersion)))
+        echoT $ "(Use " <> cyan "--source" <> " / " <> cyan "--set" <> " to override this behavior)"
         pure PackageConfig { name    = pkgName
                            , depends = [ preludePackageName ]
                            , source  = "https://github.com/purescript/package-sets.git"
@@ -322,7 +323,7 @@ install pkgName' limitJobs = do
   case pkgName' of
     Nothing -> do
       installImpl pkg limitJobs
-      echoT "Install complete"
+      echoT (cyan "Install complete")
     Just str -> do
       pkgName <- packageNameFromString str
       let pkg' = pkg { depends = List.nub (pkgName : depends pkg) }
@@ -353,7 +354,8 @@ listDependencies = do
   pkg@PackageConfig{ depends } <- readPackageFile
   db <- readPackageSet pkg
   trans <- getTransitiveDeps db depends
-  traverse_ (echoT . runPackageName . fst) trans
+  traverse_ (echoT . cyan . runPackageName . fst) trans
+  echoT (cyan (pack $ show (length trans)) <> " transitive dependencies")
 
 listPackages :: Bool -> IO ()
 listPackages sorted = do
@@ -529,9 +531,9 @@ verify arg limitJobs = do
       let
         dirFor pkgName =
           case Map.lookup pkgName db of
-            Nothing -> error ("verifyPackageSet: no directory for " <> show pkgName)
+            Nothing -> error $ red ("verifyPackageSet: no directory for " <> show pkgName)
             Just pkgInfo -> performInstall (set pkg) pkgName pkgInfo
-      echoT ("Verifying package " <> runPackageName name)
+      echoT ("Verifying package " <> (yellow $ runPackageName name))
       dependencies <- map fst <$> getTransitiveDeps db [name]
       dirs <- case limitJobs of
         Nothing -> mapConcurrently dirFor dependencies
@@ -545,6 +547,15 @@ verify arg limitJobs = do
 formatPackageFile :: IO ()
 formatPackageFile =
     readLocalPackageSet >>= writeLocalPackageSet
+
+yellow :: Colours.Pretty a => a -> a
+yellow t = Colours.color Colours.Yellow t
+
+cyan :: Colours.Pretty a => a -> a
+cyan t = Colours.color Colours.Cyan t
+
+red :: Colours.Pretty a => a -> a
+red t = Colours.color Colours.Red t
 
 main :: IO ()
 main = do
