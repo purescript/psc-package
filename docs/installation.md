@@ -6,7 +6,17 @@ You can install Psc-Package on any platform by downloading the binary for your p
 
 ## npm
 
-You might install <http://npmjs.com/package/psc-package-bin-simple> either globally or via project depencies. This should work on Linux, OSX, and Windows. Please report issues at <https://github.com/justinwoo/npm-psc-package-bin-simple> if this does not work as expected.
+You can install Psc-Package through the npm package: <https://www.npmjs.com/package/psc-package>
+
+```
+# globally
+npm i -g psc-package
+
+# for your project
+npm i -S psc-package
+```
+
+This should work on Linux, OSX, and Windows. Please report issues at <https://github.com/justinwoo/npm-psc-package-bin-simple> if this does not work as expected.
 
 ## Linux/OSX
 
