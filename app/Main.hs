@@ -295,13 +295,12 @@ initialize setAndSource limitJobs = do
     pkg <- case setAndSource of
       Nothing -> do
         pursVersion <- getPureScriptVersion
-        echoT ("Using the default package set for PureScript compiler version " <>
-          fromString (showVersion pursVersion))
+        echoT ("Using the default package set 'master'")
         echoT "(Use --source / --set to override this behavior)"
         pure PackageConfig { name    = pkgName
                            , depends = [ preludePackageName ]
                            , source  = "https://github.com/purescript/package-sets.git"
-                           , set     = "psc-" <> pack (showVersion pursVersion)
+                           , set     = "master"
                            }
       Just (set, source) ->
         pure PackageConfig { name    = pkgName
