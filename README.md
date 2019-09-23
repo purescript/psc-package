@@ -1,3 +1,9 @@
+# DEPRECATED :warning:
+
+See [spago](https://github.com/purescript/spago) which provides the same functionality and is updated regularly.
+
+<hr>
+
 # `psc-package`
 
 [![Build Status](https://travis-ci.org/purescript/psc-package.svg?branch=master)](https://travis-ci.org/purescript/psc-package)
