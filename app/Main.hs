@@ -69,11 +69,11 @@ data UrlOrLocal
   deriving (Show, Generic)
 
 -- is the given text a url, as far as we care about sources?
+-- i.e. anything ending in ".git" seems to be fair game for git
 isUrl :: Text -> Bool
 isUrl txt =
-  let isHttp = T.isPrefixOf "https://" txt
-      isGit = T.isPrefixOf "git://" txt
-  in isHttp || isGit
+  let endsInGit = T.isSuffixOf ".git" txt
+  in endsInGit
 
 mkUrlOrLocal :: Text -> UrlOrLocal
 mkUrlOrLocal txt =
