@@ -40,3 +40,56 @@ The local package database can be queried using the following commands:
 
 - `sources` - list source directories for active package versions. This can be useful when building a command for, say, running PSCi.
 - `dependencies` - list all transitive dependencies
+
+## Local package sets
+
+In `psc-package.json`, you can set `"source"` to be a path to a local file:
+
+```json
+{
+  "name": "name",
+  "set": "local",
+  "source": "packages.json",
+  "depends": [
+    "aff"
+  ]
+}
+```
+
+From here, you can generate a local packages.json file in any way you please and use this package set directly. Consider if you use Dhall:
+
+```dhall
+let upstream =
+      https://github.com/purescript/package-sets/releases/download/psc-0.13.5-20200103/packages.dhall sha256:0a6051982fb4eedb72fbe5ca4282259719b7b9b525a4dda60367f98079132f30
+
+in    upstream
+    ⫽ { calpis =
+          { dependencies = [ "prelude" ]
+          , repo = "https://github.com/justinwoo/purescript-calpis.git"
+          , version = "v0.1.0"
+          }
+      }
+```
+
+This definition takes an existing release and adds the "calpis" package. Then we can generate a package set from this by running Dhall-JSON:
+
+> dhall-to-json --file packages.dhall --output packages.json
+
+Then we can install this package expected:
+
+```bash
+$ psc-package install calpis
+Installing calpis
+psc-package.json file was updated
+
+$ cat psc-package.json
+{
+  "name": "name",
+  "set": "local",
+  "source": "packages.json",
+  "depends": [
+    "aff",
+    "calpis"
+  ]
+}
+```
