@@ -37,7 +37,7 @@ cp "$FULL_BIN" bundle/build/psc-package
 # Copy extra files to the staging directory
 cp LICENSE bundle/build/psc-package/
 
-stack list-dependencies >bundle/build/psc-package/dependencies.txt
+stack ls dependencies >bundle/build/psc-package/dependencies.txt
 
 # Make the binary bundle
 pushd bundle/build > /dev/null
