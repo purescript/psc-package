@@ -22,7 +22,7 @@ import qualified Data.Graph as G
 import           Data.List (maximumBy)
 import qualified Data.List as List
 import qualified Data.Map as Map
-import           Data.Maybe (fromMaybe, mapMaybe)
+import           Data.Maybe (mapMaybe)
 import           Data.Ord (comparing)
 import qualified Data.Set as Set
 import           Data.Text (pack)
@@ -62,11 +62,37 @@ packageDir :: Text -> PackageName -> Text -> Turtle.FilePath
 packageDir set pkgName version =
   ".psc-package" </> fromText set </> fromText (runPackageName pkgName) </> fromText version
 
+-- a the source of a package set can be a git url or a local path
+data UrlOrLocal
+  = Url Text
+  | Local Text
+  deriving (Show, Generic)
+
+-- is the given text a url, as far as we care about sources?
+-- i.e. anything ending in ".git" seems to be fair game for git
+isUrl :: Text -> Bool
+isUrl txt =
+  let endsInGit = T.isSuffixOf ".git" txt
+  in endsInGit
+
+mkUrlOrLocal :: Text -> UrlOrLocal
+mkUrlOrLocal txt =
+  if isUrl txt
+    then Url txt
+    else Local txt
+
+instance Aeson.FromJSON UrlOrLocal where
+  parseJSON value = mkUrlOrLocal <$> Aeson.parseJSON value
+
+instance Aeson.ToJSON UrlOrLocal where
+  toJSON (Url txt) = Aeson.toJSON txt
+  toJSON (Local txt) = Aeson.toJSON txt
+
 data PackageConfig = PackageConfig
   { name    :: PackageName
   , depends :: [PackageName]
   , set     :: Text
-  , source  :: Text
+  , source  :: UrlOrLocal
   } deriving (Show, Generic, Aeson.FromJSON, Aeson.ToJSON)
 
 pathToTextUnsafe :: Turtle.FilePath -> Text
@@ -166,13 +192,20 @@ listRemoteTags from = let gitProc = inproc "git"
 getPackageSet :: PackageConfig -> IO ()
 getPackageSet PackageConfig{ source, set } = do
   let pkgDir = ".psc-package" </> fromText set </> ".set"
-  exists <- testdir pkgDir
-  unless exists . void $ cloneShallow source set pkgDir
+  case source of
+    Local _ -> pure ()
+    Url source' -> do
+      exists <- testdir pkgDir
+      unless exists . void $ cloneShallow source' set pkgDir
 
 readPackageSet :: PackageConfig -> IO PackageSet
-readPackageSet PackageConfig{ set } = do
-  let dbFile = ".psc-package" </> fromText set </> ".set" </> "packages.json"
-  handleReadPackageSet dbFile
+readPackageSet PackageConfig{ set, source } = do
+  case source of
+    Local txt -> do
+      handleReadPackageSet (fromText txt)
+    Url _ -> do
+      let dbFile = ".psc-package" </> fromText set </> ".set" </> "packages.json"
+      handleReadPackageSet dbFile
 
 handleReadPackageSet :: Path.FilePath -> IO PackageSet
 handleReadPackageSet dbFile = do
@@ -184,9 +217,12 @@ handleReadPackageSet dbFile = do
     Right db -> return db
 
 writePackageSet :: PackageConfig -> PackageSet -> IO ()
-writePackageSet PackageConfig{ set } =
-  let dbFile = ".psc-package" </> fromText set </> ".set" </> "packages.json"
-  in writeTextFile dbFile . packageSetToJSON
+writePackageSet PackageConfig{ set, source } =
+  case source of
+    Local txt -> writeTextFile (fromText txt) . packageSetToJSON
+    Url _ ->
+      let dbFile = ".psc-package" </> fromText set </> ".set" </> "packages.json"
+      in writeTextFile dbFile . packageSetToJSON
 
 readLocalPackageSet :: IO PackageSet
 readLocalPackageSet = handleReadPackageSet localPackageSet
@@ -300,13 +336,15 @@ initialize setAndSource limitJobs = do
         echoT "(Use --source / --set to override this behavior)"
         pure PackageConfig { name    = pkgName
                            , depends = [ preludePackageName ]
-                           , source  = "https://github.com/purescript/package-sets.git"
+                           , source  = Url "https://github.com/purescript/package-sets.git"
                            , set     = "psc-" <> pack (showVersion pursVersion)
                            }
       Just (set, source) ->
         pure PackageConfig { name    = pkgName
                            , depends = [ preludePackageName ]
-                           , source  = fromMaybe "https://github.com/purescript/package-sets.git" source
+                           , source  = case source of
+                               Just x -> mkUrlOrLocal x
+                               Nothing -> Url "https://github.com/purescript/package-sets.git"
                            , set
                            }
 
