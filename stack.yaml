@@ -1,5 +1,4 @@
-resolver: lts-11.1
+resolver: lts-14.23
 packages:
 - '.'
-extra-deps:
-- aeson-pretty-0.8.5 # newer in lts-11.1 needed for formatting packages.json
+extra-deps: []
