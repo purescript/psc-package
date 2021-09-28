@@ -17,7 +17,7 @@ import           Control.Monad (filterM)
 import qualified Data.Aeson as Aeson
 import           Data.Aeson.Encode.Pretty
 import           Data.Either.Combinators (rightToMaybe)
-import           Data.Foldable (fold, foldMap, traverse_)
+import           Data.Foldable (fold, traverse_)
 import qualified Data.Graph as G
 import           Data.List (maximumBy)
 import qualified Data.List as List
@@ -598,7 +598,7 @@ main = do
     -- | Displays full command help when invoked with no arguments.
     execParserPure :: Opts.ParserInfo a -> [String] -> Opts.ParserResult a
     execParserPure pinfo [] = Opts.Failure $
-      Opts.parserFailure Opts.defaultPrefs pinfo Opts.ShowHelpText mempty
+      Opts.parserFailure Opts.defaultPrefs pinfo (Opts.ShowHelpText Nothing) mempty
     execParserPure pinfo args = Opts.execParserPure Opts.defaultPrefs pinfo args
 
     versionInfo :: Parser (a -> a)
