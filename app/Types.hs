@@ -12,7 +12,6 @@ import           Control.Category ((>>>))
 import           Data.Aeson (FromJSON, ToJSON, FromJSONKey(..), ToJSONKey(..), ToJSONKeyFunction(..), FromJSONKeyFunction(..), parseJSON, toJSON, withText)
 import qualified Data.Aeson.Encoding as AesonEncoding
 import           Data.Char (isAscii, isLower, isDigit)
-import           Data.Monoid ((<>))
 import           Data.Text (Text)
 import qualified Data.Text as T
 
@@ -27,7 +26,7 @@ instance FromJSON PackageName where
   parseJSON =
     withText "package name" fromText
 
-fromText :: Monad m => Text -> m PackageName
+fromText :: MonadFail m => Text -> m PackageName
 fromText t =
   case mkPackageName t of
     Right pkgName -> pure pkgName
